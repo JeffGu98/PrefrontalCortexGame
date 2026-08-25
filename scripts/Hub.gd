@@ -5,7 +5,7 @@ extends Control
 const GAMES := [
 	{"title": "反向色字", "func": "抑制控制 · 干扰", "group": "抑制控制", "scene": "res://scenes/Stroop.tscn", "built": true},
 	{"title": "反向反应", "func": "抑制控制 · 克制", "group": "抑制控制", "scene": "res://scenes/GoNoGo.tscn", "built": true},
-	{"title": "红灯停", "func": "抑制控制 · 刹车", "group": "抑制控制", "scene": "", "built": false},
+	{"title": "红灯停", "func": "抑制控制 · 刹车", "group": "抑制控制", "scene": "res://scenes/StopSignal.tscn", "built": true},
 	{"title": "舒尔特方格", "func": "专注 · 视觉搜索", "group": "注意", "scene": "res://scenes/Schulte.tscn", "built": true},
 	{"title": "追踪异色球", "func": "注意 · 追踪", "group": "注意", "scene": "", "built": false},
 	{"title": "N-Back", "func": "工作记忆 · 更新", "group": "工作记忆", "scene": "", "built": false},

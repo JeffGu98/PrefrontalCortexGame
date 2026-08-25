@@ -45,6 +45,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "反向反应"
+	help_text = "圆出现之后再决定点不点。点圆或底部「点」都可以。\n默认：绿圆要点，红圆不要点。点中绿圆得 10 分，红圆忍住得 15 分。\n点了不该点的、或该点却没点，都扣一命。连对多次后规则会反转，看顶部色块上的「点 / 停」。"
 
 
 func _build_game() -> void:

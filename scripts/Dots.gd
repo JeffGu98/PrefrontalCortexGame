@@ -47,6 +47,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "看点数"
+	help_text = "圆点会短暂闪过，消失后用底部键盘输入你看到的数量。\n完全正确得分最高；只差 1 个也有一半分。一局 60 秒。\n进场先有一秒准备。闪现时键盘会变淡，消失后再输入。"
 
 
 func _build_game() -> void:

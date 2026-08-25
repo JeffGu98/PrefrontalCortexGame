@@ -30,6 +30,7 @@ var cells: Array = []
 
 func _init() -> void:
 	title_text = "舒尔特方格"
+	help_text = "5×5 格子里随机排着 1 到 25。从 1 开始按顺序点，越快越好。\n点错会闪红并计入失误，但不用从头来。\n第一次点击开始计时，点完 25 看用时。"
 
 
 func _build_game() -> void:

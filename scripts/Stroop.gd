@@ -21,7 +21,6 @@ var lives := LIVES
 var streak := 0
 var best_streak := 0
 var best_score := 0
-var conflict_ratio := 0.3
 var trial_time_left := TRIAL_TIME
 var correct_color := ""
 var game_over := false
@@ -39,6 +38,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "反向色字"
+	help_text = "中央出现一个颜色字，字的意思和字体颜色一定不同。\n点下面四个按钮里「字体颜色」对应的那个，不要看字写的是什么。\n每题 2 秒。点错或超时扣一命，三条命用完本局结束。"
 
 
 func _build_game() -> void:
@@ -148,10 +148,8 @@ func _new_trial() -> void:
 	_set_hint(HINT_IDLE, Color("#7f8ba6"))
 
 	var ink_idx := randi() % COLORS.size()
-	var word_idx := ink_idx
-	if randf() < conflict_ratio:
-		var offset := randi() % (COLORS.size() - 1) + 1
-		word_idx = (ink_idx + offset) % COLORS.size()
+	var offset := randi() % (COLORS.size() - 1) + 1
+	var word_idx := (ink_idx + offset) % COLORS.size()
 
 	word_label.text = COLORS[word_idx]["name"]
 	word_label.add_theme_color_override("font_color", COLORS[ink_idx]["color"])
@@ -167,7 +165,6 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 		streak += 1
 		best_streak = maxi(best_streak, streak)
 		score += 10 + time_bonus + mini(streak, 10) * 2
-		conflict_ratio = minf(0.65, conflict_ratio + 0.03)
 		_set_hint("+%d" % (10 + time_bonus + mini(streak, 10) * 2), Color("#4ade80"))
 		word_label.modulate = Color("#4ade80")
 		_update_hud()
@@ -259,7 +256,6 @@ func _restart() -> void:
 	lives = LIVES
 	streak = 0
 	best_streak = 0
-	conflict_ratio = 0.3
 	game_over = false
 	waiting = false
 	if restart_button != null:

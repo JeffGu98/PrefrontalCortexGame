@@ -1,11 +1,15 @@
 extends Control
-## Shared scaffolding for every mini-game: dark background, back button, title.
+## Shared scaffolding for every mini-game: dark background, back, title, help.
 
 
 const HUB_SCENE := "res://scenes/Hub.tscn"
 const BG_COLOR := Color("#0d1220")
 
 var title_text := ""
+var help_text := ""
+
+var _help_overlay: Control
+var _help_open := false
 
 
 func _ready() -> void:
@@ -14,7 +18,9 @@ func _ready() -> void:
 	_build_back_button()
 	if title_text != "":
 		_build_title()
+	_build_help_button()
 	_build_game()
+	_build_help_overlay()
 
 
 func _build_background() -> void:
@@ -56,7 +62,119 @@ func _build_game() -> void:
 	pass
 
 
+func _build_help_button() -> void:
+	if help_text == "":
+		return
+	var btn := Button.new()
+	btn.text = "?"
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	btn.z_index = 110
+	btn.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	btn.offset_left = -64
+	btn.offset_top = 16
+	btn.offset_right = -16
+	btn.offset_bottom = 64
+	btn.add_theme_font_size_override("font_size", 24)
+	btn.add_theme_color_override("font_color", Color("#e8edff"))
+	_style_button(btn, Color("#1a2740"))
+	btn.pressed.connect(_toggle_help)
+	add_child(btn)
+
+
+func _build_help_overlay() -> void:
+	if help_text == "":
+		return
+	_help_overlay = HelpLayer.new()
+	_help_overlay.visible = false
+	_help_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_help_overlay.z_index = 100
+	_help_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_help_overlay.closed.connect(_hide_help)
+	add_child(_help_overlay)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.gui_input.connect(_on_help_dim_input)
+	_help_overlay.add_child(dim)
+
+	var card := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#1a2740")
+	style.set_corner_radius_all(14)
+	card.add_theme_stylebox_override("panel", style)
+	card.anchor_left = 0.08
+	card.anchor_right = 0.92
+	card.anchor_top = 0.22
+	card.anchor_bottom = 0.78
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	_help_overlay.add_child(card)
+
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 28
+	box.offset_right = -28
+	box.offset_top = 24
+	box.offset_bottom = -24
+	box.add_theme_constant_override("separation", 16)
+	card.add_child(box)
+
+	var heading := _make_label("玩法", 28, Color("#e8edff"))
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(heading)
+
+	if title_text != "":
+		var sub := _make_label(title_text, 16, Color("#8ab4ff"))
+		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(sub)
+
+	var body := _make_label(help_text, 20, Color("#e8edff"))
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(body)
+
+	var close_btn := Button.new()
+	close_btn.text = "知道了"
+	close_btn.custom_minimum_size = Vector2(0, 56)
+	close_btn.add_theme_font_size_override("font_size", 22)
+	close_btn.add_theme_color_override("font_color", Color("#0d1220"))
+	_style_button(close_btn, Color("#4ade80"))
+	close_btn.pressed.connect(_hide_help)
+	box.add_child(close_btn)
+
+
+func _toggle_help() -> void:
+	if _help_open:
+		_hide_help()
+	else:
+		_show_help()
+
+
+func _show_help() -> void:
+	if _help_overlay == null:
+		return
+	_help_open = true
+	_help_overlay.visible = true
+	_help_overlay.move_to_front()
+	get_tree().paused = true
+
+
+func _hide_help() -> void:
+	_help_open = false
+	if _help_overlay != null:
+		_help_overlay.visible = false
+	get_tree().paused = false
+
+
+func _on_help_dim_input(event: InputEvent) -> void:
+	var mouse := event as InputEventMouseButton
+	if mouse != null and mouse.pressed and mouse.button_index == MOUSE_BUTTON_LEFT:
+		_hide_help()
+
+
 func _go_back() -> void:
+	get_tree().paused = false
 	get_tree().change_scene_to_file(HUB_SCENE)
 
 
@@ -101,3 +219,15 @@ func _make_restart_button(callback: Callable, y: float = -1.0) -> Button:
 	btn.pressed.connect(callback)
 	add_child(btn)
 	return btn
+
+
+class HelpLayer extends Control:
+	signal closed
+
+	func _input(event: InputEvent) -> void:
+		if not visible:
+			return
+		var key := event as InputEventKey
+		if key != null and key.pressed and not key.echo and key.keycode == KEY_ESCAPE:
+			closed.emit()
+			get_viewport().set_input_as_handled()
