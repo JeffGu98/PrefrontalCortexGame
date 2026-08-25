@@ -9,6 +9,8 @@
 - 引擎：Godot 4.7+（纯 GDScript，无外部依赖，无需 .NET）
 - 用 Godot 编辑器打开本目录，F5 运行
 - 竖屏 720×1280 基准（`canvas_items` 拉伸），面向移动端，桌面可直接测试
+- Android 安装包见 [Releases](https://github.com/JeffGu98/PrefrontalCortexGame/releases)（旁加载 APK）
+- iOS 需要本机安装 Xcode 并配置 Apple 开发者签名，当前 Release 不提供 IPA
 
 ## 结构
 
