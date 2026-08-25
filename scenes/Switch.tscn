@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/Switch.gd" id="1_switch"]
+
+[node name="Switch" type="Control"]
+script = ExtResource("1_switch")
