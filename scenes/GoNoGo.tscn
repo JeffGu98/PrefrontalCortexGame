@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/GoNoGo.gd" id="1_gonogo"]
+
+[node name="GoNoGo" type="Control"]
+script = ExtResource("1_gonogo")
