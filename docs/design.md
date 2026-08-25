@@ -63,6 +63,7 @@ prefrontal-cortex-game/
 - **GameBase 提供公共外壳。** 深色背景（`#0d1220`）、左上角「< 返回」、右上角「?」玩法、居中标题。子类在 `_init()` 里设 `title_text` 和 `help_text`，并重写 `_build_game()`。打开玩法时暂停游戏树，避免计时在说明底下继续跑。
 - **Hub 用数据驱动注册。** `GAMES` 数组是唯一注册点：`{title, func, group, scene, built}`。列表按 `group`（执行功能）分段；卡片两行（游戏名 + 练什么）。未实现的游戏 `built: false` → 置灰并在右侧标「即将推出」，功能说明仍可见；实现后翻成 `true` 并填 `scene` 路径即可。
 - **游戏间零耦合。** 每个游戏一个场景 + 一个脚本，返回即 `change_scene_to_file` 回 hub，无共享运行时状态。本地成绩各自存 `user://*.cfg`。
+- **Hub 检查 GitHub Release。** 进首页时请求 `releases/latest`，远程 tag 比 `application/config/version` 新则底部提示「有新版本」；点开浏览器下载页。失败静默；点 × 记下该 tag，不再提示。不自动安装。
 
 ### 代码规范（沿用本仓库惯例）
 
