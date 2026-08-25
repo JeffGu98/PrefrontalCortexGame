@@ -14,6 +14,7 @@ const SAME := Color("#8ab4ff")
 const ODD := Color("#ffd75d")
 const PICK := Color("#4ade80")
 const WRONG := Color("#ff5d73")
+const AXIS_DEAD := PI / 9.0
 
 enum Phase { READY, HIGHLIGHT, MOVE, PICK, FEEDBACK, OVER }
 
@@ -153,8 +154,8 @@ func _spawn_balls() -> void:
 		radii.append(r)
 		var p := Vector2(r + 8.0 + randf() * maxf(area.x - r * 2.0 - 16.0, r), r + 8.0 + randf() * maxf(area.y - r * 2.0 - 16.0, r))
 		positions.append(p)
-		var ang := randf() * TAU
-		var spd := randf_range(90.0, 140.0)
+		var ang := _launch_angle()
+		var spd := randf_range(270.0, 420.0)
 		velocities.append(Vector2(cos(ang), sin(ang)) * spd)
 	var idx := range(ball_count)
 	idx.shuffle()
@@ -162,9 +163,17 @@ func _spawn_balls() -> void:
 		targets.append(int(idx[i]))
 
 
+func _launch_angle() -> float:
+	var quad := randi() % 4
+	var span := PI * 0.5 - AXIS_DEAD * 2.0
+	return float(quad) * PI * 0.5 + AXIS_DEAD + randf() * span
+
+
 func _begin_move() -> void:
 	phase = Phase.MOVE
-	phase_left = clampf(MOVE_MIN + (ball_count - START_BALLS) * 0.5, MOVE_MIN, MOVE_MAX)
+	var base := clampf(MOVE_MIN + (ball_count - START_BALLS) * 0.5, MOVE_MIN, MOVE_MAX)
+	var factor := maxi(ceili((15.0 - float(ball_count)) / 2.0), 1)
+	phase_left = base * float(factor)
 	_set_hint("盯住它们", Color("#7f8ba6"))
 	_update_hud()
 
@@ -221,10 +230,12 @@ func _confirm() -> void:
 		if ball_count < MAX_BALLS:
 			ball_count += 1
 		_set_hint("全对  +%d" % SCORE_ALL, Color("#4ade80"))
+		_burst_feedback("全对  +%d" % SCORE_ALL, Color("#4ade80"))
 	else:
 		streak = 0
 		lives -= 1
 		_set_hint("有出入", Color("#ff5d73"))
+		_burst_feedback("有出入", Color("#ff5d73"))
 	_update_hud()
 	canvas.queue_redraw()
 	if lives <= 0:

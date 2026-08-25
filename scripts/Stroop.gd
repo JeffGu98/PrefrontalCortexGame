@@ -117,22 +117,9 @@ func _build_color_buttons() -> void:
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(btn_w, btn_h)
 		btn.text = entry["name"]
-		btn.add_theme_font_size_override("font_size", 30)
-		btn.add_theme_color_override("font_color", Color("#0d1220"))
-
-		var style := StyleBoxFlat.new()
-		style.bg_color = entry["color"]
-		style.set_corner_radius_all(14)
-		btn.add_theme_stylebox_override("normal", style)
-
-		var hover := style.duplicate()
-		hover.bg_color = entry["color"].lightened(0.12)
-		btn.add_theme_stylebox_override("hover", hover)
-
-		var pressed := style.duplicate()
-		pressed.bg_color = entry["color"].darkened(0.15)
-		btn.add_theme_stylebox_override("pressed", pressed)
-
+		btn.add_theme_font_size_override("font_size", 40)
+		btn.add_theme_color_override("font_color", Color("#e8edff"))
+		_style_button(btn, Color("#1a2740"))
 		btn.pressed.connect(_on_color_pressed.bind(entry["name"], btn))
 		g.add_child(btn)
 
@@ -165,7 +152,9 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 		streak += 1
 		best_streak = maxi(best_streak, streak)
 		score += 10 + time_bonus + mini(streak, 10) * 2
-		_set_hint("+%d" % (10 + time_bonus + mini(streak, 10) * 2), Color("#4ade80"))
+		var pts := 10 + time_bonus + mini(streak, 10) * 2
+		_set_hint("+%d" % pts, Color("#4ade80"))
+		_burst_feedback("+%d" % pts, Color("#4ade80"))
 		word_label.modulate = Color("#4ade80")
 		_update_hud()
 		_begin_gap()
@@ -178,6 +167,7 @@ func _apply_miss(reason: String) -> void:
 	streak = 0
 	lives -= 1
 	_set_hint(reason, Color("#ff5d73"))
+	_burst_feedback(reason, Color("#ff5d73"))
 	_update_hud()
 	if lives <= 0:
 		_end_game()

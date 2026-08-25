@@ -36,17 +36,19 @@ var hint_label: Label
 var board: Control
 var peg_hits: Array[Button] = []
 var restart_button: Button
+var reset_btn: Button
 
 
 func _init() -> void:
 	title_text = "汉诺塔"
-	help_text = "三根柱子。开始时盘子都在左边，要全部移到右边。\n点一下选出顶上的盘，再点目标柱放下。大盘不能压小盘。\n最优步数是 2^N−1。最优通关会加盘；步数太多仍可通过，但标成非最优。练的是计划，不是速度。"
+	help_text = "三根柱子。开始时盘子都在左边，要全部移到右边。\n点一下选出顶上的盘，再点目标柱放下。大盘不能压小盘。乱了可以点「复位」，盘子回左柱，本关步数清零，总分保留。\n最优步数是 2^N−1。最优通关会加盘；步数太多仍可通过，但标成非最优。练的是计划，不是速度。"
 
 
 func _build_game() -> void:
 	_load_best()
 	_build_hud()
 	_build_board()
+	_build_reset_button()
 	_layout_board()
 	_start_level()
 
@@ -88,6 +90,18 @@ func _build_board() -> void:
 		peg_hits.append(hit)
 
 
+func _build_reset_button() -> void:
+	reset_btn = Button.new()
+	reset_btn.text = "复位"
+	reset_btn.focus_mode = Control.FOCUS_NONE
+	reset_btn.add_theme_font_size_override("font_size", 22)
+	reset_btn.add_theme_color_override("font_color", Color("#e8edff"))
+	reset_btn.custom_minimum_size = Vector2(220, 56)
+	_style_button(reset_btn, Color("#1a2740"))
+	reset_btn.pressed.connect(_reset_board)
+	add_child(reset_btn)
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and board != null:
 		_layout_board()
@@ -96,8 +110,10 @@ func _notification(what: int) -> void:
 
 func _layout_board() -> void:
 	var vp := get_viewport_rect().size
+	reset_btn.position = Vector2((vp.x - 220.0) / 2.0, vp.y - 36.0 - 56.0)
+	reset_btn.size = Vector2(220, 56)
 	board.position = Vector2(20, 170)
-	board.size = Vector2(vp.x - 40.0, vp.y - 210.0)
+	board.size = Vector2(vp.x - 40.0, reset_btn.position.y - 186.0)
 	var col_w := board.size.x / PEGS
 	for i in range(PEGS):
 		peg_hits[i].position = Vector2(col_w * i, 0)
@@ -144,6 +160,25 @@ func _start_level() -> void:
 		restart_button = null
 	_layout_disks(false)
 	_set_hint("把盘子移到右边绿线柱", Color("#7f8ba6"))
+	_update_hud()
+	board.queue_redraw()
+	if reset_btn != null:
+		reset_btn.visible = true
+		reset_btn.modulate = Color.WHITE
+
+
+func _reset_board() -> void:
+	if phase != Phase.PLAY:
+		return
+	selected = -1
+	animating = false
+	moves = 0
+	elapsed = 0.0
+	pegs = [[], [], []]
+	for size in range(disk_n, 0, -1):
+		pegs[0].append(size)
+	_layout_disks(false)
+	_set_hint("已复位 · 盘子回到左柱", Color("#8ab4ff"))
 	_update_hud()
 	board.queue_redraw()
 
@@ -249,10 +284,14 @@ func _check_win() -> void:
 	if is_best:
 		best_score = score
 		_save_best()
-	_set_hint("过关 +%d%s" % [gained, extra], Color("#4ade80") if moves <= optimal else Color("#ffd75d"))
+	var tone := Color("#4ade80") if moves <= optimal else Color("#ffd75d")
+	_set_hint("过关 +%d%s" % [gained, extra], tone)
+	_burst_feedback("过关 +%d" % gained, tone)
 	_update_hud()
+	if reset_btn != null:
+		reset_btn.modulate = Color(1, 1, 1, 0.4)
 	if restart_button == null:
-		restart_button = _make_restart_button(_next_or_restart)
+		restart_button = _make_restart_button(_next_or_restart, reset_btn.position.y - 72.0)
 		restart_button.text = "下一关"
 
 

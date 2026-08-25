@@ -221,6 +221,50 @@ func _make_restart_button(callback: Callable, y: float = -1.0) -> Button:
 	return btn
 
 
+func _burst_feedback(text: String, color: Color = Color("#4ade80")) -> void:
+	var old := get_node_or_null("BurstFeedback")
+	if old != null:
+		old.queue_free()
+	var old_wash := get_node_or_null("BurstWash")
+	if old_wash != null:
+		old_wash.queue_free()
+	var wash := ColorRect.new()
+	wash.name = "BurstWash"
+	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wash.z_index = 70
+	wash.color = Color(color.r, color.g, color.b, 0.18)
+	wash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(wash)
+	var wash_tw := create_tween()
+	wash_tw.tween_property(wash, "modulate:a", 0.0, 0.28)
+	wash_tw.tween_callback(wash.queue_free)
+
+	var label := Label.new()
+	label.name = "BurstFeedback"
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.z_index = 80
+	label.add_theme_font_size_override("font_size", 64)
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_color_override("font_outline_color", Color("#0d1220"))
+	label.add_theme_constant_override("outline_size", 10)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	label.offset_left = -280
+	label.offset_right = 280
+	label.offset_top = -70
+	label.offset_bottom = 70
+	label.pivot_offset = Vector2(280, 70)
+	label.scale = Vector2(0.72, 0.72)
+	add_child(label)
+	var tw := create_tween()
+	tw.tween_property(label, "scale", Vector2(1.08, 1.08), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(0.28)
+	tw.tween_property(label, "modulate:a", 0.0, 0.22)
+	tw.tween_callback(label.queue_free)
+
+
 class HelpLayer extends Control:
 	signal closed
 

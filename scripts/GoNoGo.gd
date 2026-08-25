@@ -308,6 +308,7 @@ func _succeed(points: int, reason: String) -> void:
 	score += points
 	corrects_since_flip += 1
 	_set_hint("%s  +%d" % [reason, points], Color("#4ade80"))
+	_burst_feedback("%s  +%d" % [reason, points], Color("#4ade80"))
 	_update_hud()
 	if corrects_since_flip >= FLIP_AFTER:
 		_begin_rule_change()
@@ -319,6 +320,7 @@ func _miss(reason: String) -> void:
 	streak = 0
 	lives -= 1
 	_set_hint(reason, Color("#ff5d73"))
+	_burst_feedback(reason, Color("#ff5d73"))
 	_update_hud()
 	if lives <= 0:
 		_end_game()

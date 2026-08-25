@@ -9,11 +9,12 @@ const GAP_MAX := 0.9
 const FEEDBACK_TIME := 0.45
 const TRAVEL_MIN := 1.2
 const TRAVEL_MAX := 2.0
-const STOP_RATIO := 0.25
+const STOP_RATIO := 0.5
 const STOP_AT_MIN := 0.4
 const STOP_AT_MAX := 0.7
 const STOP_HOLD := 0.5
-const MAX_GO_STREAK := 4
+const GO_WINDOW := 0.72
+const MAX_GO_STREAK := 2
 const SCORE_GO := 10
 const SCORE_STOP := 20
 const BEST_PATH := "user://stopsignal_best.cfg"
@@ -51,7 +52,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "红灯停"
-	help_text = "小车从左开向右边的终点线。到线之前点「冲」（或点赛道）。\n大多数时候要冲过去。若中途突然亮红灯，必须立刻停手。\n冲过终点得 10 分；红灯亮后忍住得 20 分。红灯时还冲、或绿灯没冲，都扣命。"
+	help_text = "小车从左开向右边的终点线。等到车靠近终点的绿线再冲，一开始点没有用。\n大多数时候要冲过去。若中途突然亮红灯，必须立刻停手。\n冲过终点得 10 分；红灯亮后忍住得 20 分。红灯时还冲、或绿灯没冲，都扣命。"
 
 
 func _build_game() -> void:
@@ -216,7 +217,7 @@ func _begin_drive() -> void:
 	car.queue_redraw()
 	_set_light(false)
 	phase = Phase.DRIVE
-	_set_hint("冲过终点线", Color("#7f8ba6"))
+	_set_hint("等到绿线再冲", Color("#7f8ba6"))
 	_place_car()
 	_update_hud()
 
@@ -270,8 +271,11 @@ func _on_tap() -> void:
 		return
 	if red_on:
 		_miss("没刹住")
-	else:
-		_succeed(SCORE_GO, "冲过")
+		return
+	if progress < GO_WINDOW:
+		_set_hint("还没到，再等等", Color("#ffd75d"))
+		return
+	_succeed(SCORE_GO, "冲过")
 
 
 func _succeed(points: int, reason: String) -> void:
@@ -290,6 +294,7 @@ func _succeed(points: int, reason: String) -> void:
 	car.queue_redraw()
 	_place_car()
 	_set_hint("%s  +%d" % [reason, points], Color("#4ade80"))
+	_burst_feedback("%s  +%d" % [reason, points], Color("#4ade80"))
 	_update_hud()
 
 
@@ -308,6 +313,7 @@ func _miss(reason: String) -> void:
 	tw.tween_property(car, "position:x", origin_x - 10.0, 0.05)
 	tw.tween_property(car, "position:x", origin_x, 0.05)
 	_set_hint(reason, Color("#ff5d73"))
+	_burst_feedback(reason, Color("#ff5d73"))
 	_update_hud()
 	if lives <= 0:
 		_end_game()
@@ -327,7 +333,12 @@ func _process(delta: float) -> void:
 				_succeed(SCORE_STOP, "刹住了")
 				return
 		_place_car()
-		var itch := 1.0 + 0.05 * progress + 0.04 * sin(drive_elapsed * 10.0)
+		var in_window := progress >= GO_WINDOW and not red_on
+		if in_window and hint_label.text != "冲！":
+			_set_hint("冲！", Color("#4ade80"))
+		var itch := 1.0 + 0.04 * progress + 0.04 * sin(drive_elapsed * 10.0)
+		if in_window:
+			itch += 0.08
 		tap_btn.scale = Vector2(itch, itch)
 		if progress >= 1.0:
 			if red_on:
@@ -410,6 +421,8 @@ class TrackView extends Control:
 		while x < size.x - 36.0:
 			draw_rect(Rect2(x, y - 2.0, 22.0, 4.0), Color("#2a3a58"), true)
 			x += 38.0
+		var go_x := size.x * 0.72
+		draw_rect(Rect2(go_x - 3.0, 10.0, 5.0, size.y - 20.0), Color("#4ade80"), true)
 		draw_rect(Rect2(size.x - 16.0, 10.0, 6.0, size.y - 20.0), Color("#ffd75d"), true)
 
 

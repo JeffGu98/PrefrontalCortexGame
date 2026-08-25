@@ -11,14 +11,17 @@ const COUNT_MIN := 4
 const COUNT_MAX_START := 12
 const SCORE_EXACT := 10
 const SCORE_CLOSE := 5
-const FEEDBACK_TIME := 0.75
+const FEEDBACK_TIME := 1.8
+const CLEAR_TIME := 0.5
 const BEST_PATH := "user://dots_best.cfg"
 const MAX_DIGITS := 3
 const KEYPAD_COLS := 3
 const KEYPAD_ROWS := 4
 const KEY_GAP := 12.0
+const PANEL_CORNER := 14.0
+const DOT_STROKE := 2.0
 
-enum Phase { READY, FLASH, INPUT, FEEDBACK, OVER }
+enum Phase { READY, FLASH, INPUT, FEEDBACK, CLEAR, OVER }
 
 var phase := Phase.READY
 var score := 0
@@ -29,6 +32,7 @@ var ready_left := 0.0
 var flash_time := FLASH_TIME_START
 var flash_left := 0.0
 var feedback_left := 0.0
+var clear_left := 0.0
 var count_max := COUNT_MAX_START
 var true_count := 0
 var typed := ""
@@ -173,8 +177,10 @@ func _start_round() -> void:
 	phase = Phase.READY
 	ready_left = READY_TIME
 	canvas.showing = false
+	canvas.fill = Color("#8ab4ff")
 	canvas.queue_redraw()
 	flash_bar.visible = false
+	_tint_panel(Color("#1a2740"))
 	if restart_button != null:
 		restart_button.queue_free()
 		restart_button = null
@@ -189,9 +195,11 @@ func _new_trial() -> void:
 	if phase == Phase.OVER:
 		return
 	typed = ""
+	_tint_panel(Color("#1a2740"))
 	true_count = randi_range(COUNT_MIN, count_max)
 	canvas.radius = _radius_for(true_count, panel.size)
-	canvas.points = _scatter_points(true_count, panel.size, canvas.radius)
+	canvas.fill = Color("#8ab4ff")
+	canvas.points = _keep_inside(_scatter_points(true_count, panel.size, canvas.radius), panel.size, canvas.radius)
 	true_count = canvas.points.size()
 	canvas.showing = true
 	canvas.queue_redraw()
@@ -204,23 +212,47 @@ func _new_trial() -> void:
 
 
 func _radius_for(count: int, area: Vector2) -> float:
-	var usable := maxf((area.x - 28.0) * (area.y - 28.0), 1.0)
-	var radius := sqrt(usable * 0.55 / float(maxi(count, 1))) / 2.5
-	return clampf(radius, 8.0, 18.0)
+	var usable := maxf((area.x - 48.0) * (area.y - 48.0), 1.0)
+	var radius := sqrt(usable / float(maxi(count, 1))) / 6.5
+	return clampf(radius, 9.0, 14.0)
+
+
+func _inner_rect(area: Vector2, radius: float) -> Rect2:
+	var inset := radius + PANEL_CORNER + DOT_STROKE + 4.0
+	var size := area - Vector2(inset, inset) * 2.0
+	if size.x < radius * 2.0 or size.y < radius * 2.0:
+		inset = radius + DOT_STROKE + 4.0
+		size = area - Vector2(inset, inset) * 2.0
+	size.x = maxf(size.x, 2.0)
+	size.y = maxf(size.y, 2.0)
+	return Rect2(Vector2(inset, inset), size)
+
+
+func _keep_inside(points: Array[Vector2], area: Vector2, radius: float) -> Array[Vector2]:
+	var inner := _inner_rect(area, radius)
+	var min_p := inner.position
+	var max_p := inner.position + inner.size
+	var out: Array[Vector2] = []
+	for p in points:
+		out.append(Vector2(clampf(p.x, min_p.x, max_p.x), clampf(p.y, min_p.y, max_p.y)))
+	return out
 
 
 func _scatter_points(count: int, area: Vector2, radius: float) -> Array[Vector2]:
-	var margin := radius + 10.0
-	var usable := Rect2(Vector2(margin, margin), area - Vector2(margin, margin) * 2.0)
+	var usable := _inner_rect(area, radius)
 	if usable.size.x <= radius or usable.size.y <= radius:
 		return [area * 0.5]
-	var min_dist := radius * 2.5
-	for _pass in range(8):
+	var ideal := sqrt((usable.size.x * usable.size.y) / float(maxi(count, 1)))
+	var min_dist := maxf(radius * 3.8, ideal * 0.78)
+	var floor_dist := radius * 3.2
+	for _pass in range(10):
 		var points := _bridson(count, usable, min_dist)
 		if points.size() >= count:
 			return points.slice(0, count)
-		min_dist *= 0.82
-	return _dart_fill(count, usable, min_dist)
+		if min_dist <= floor_dist + 0.5:
+			break
+		min_dist = maxf(floor_dist, min_dist * 0.9)
+	return _dart_fill(count, usable, floor_dist)
 
 
 func _bridson(count: int, usable: Rect2, min_dist: float) -> Array[Vector2]:
@@ -249,7 +281,7 @@ func _bridson(count: int, usable: Rect2, min_dist: float) -> Array[Vector2]:
 			var ang := randf() * TAU
 			var rad := min_dist * (1.0 + randf())
 			var cand := origin + Vector2(cos(ang), sin(ang)) * rad
-			if not usable.has_point(cand):
+			if not _inside_usable(cand, usable):
 				continue
 			if not _is_open(points, grid, gw, gh, cell, usable, cand, min_dist):
 				continue
@@ -305,12 +337,20 @@ func _dart_fill(count: int, usable: Rect2, min_dist: float) -> Array[Vector2]:
 				break
 		if ok:
 			points.append(p)
-	while points.size() < count:
+	var guard := 0
+	while points.size() < count and guard < count * 80:
+		guard += 1
 		points.append(Vector2(
 			usable.position.x + randf() * usable.size.x,
 			usable.position.y + randf() * usable.size.y
 		))
 	return points
+
+
+func _inside_usable(p: Vector2, usable: Rect2) -> bool:
+	return p.x >= usable.position.x and p.y >= usable.position.y \
+		and p.x <= usable.position.x + usable.size.x \
+		and p.y <= usable.position.y + usable.size.y
 
 
 func _on_key_pressed(key: String) -> void:
@@ -343,21 +383,29 @@ func _confirm() -> void:
 		return
 	var guess := int(typed)
 	var error := absi(guess - true_count)
+	var result := Color("#ff5d73")
 	if error == 0:
 		streak += 1
 		score += SCORE_EXACT + mini(streak, 10) * 2
 		_raise_difficulty()
-		_set_status("正好！", Color("#4ade80"))
+		result = Color("#4ade80")
+		_set_status("正好！　实际 %d" % true_count, result)
+		_burst_feedback("正好！", result)
 	elif error == 1:
 		score += SCORE_CLOSE
-		_set_status("接近 · 实际 %d" % true_count, Color("#ffd75d"))
+		result = Color("#ffd75d")
+		_set_status("接近　·　实际 %d" % true_count, result)
+		_burst_feedback("接近", result)
 	else:
 		streak = 0
 		_lower_difficulty()
-		_set_status("看岔了 · 实际 %d" % true_count, Color("#ff5d73"))
+		_set_status("看岔了　·　实际 %d" % true_count, result)
+		_burst_feedback("看岔了", result)
+	canvas.fill = result
 	canvas.showing = true
 	canvas.queue_redraw()
 	flash_bar.visible = false
+	_tint_panel(Color("#152034"))
 	phase = Phase.FEEDBACK
 	feedback_left = FEEDBACK_TIME
 	_update_hud()
@@ -386,6 +434,18 @@ func _process(delta: float) -> void:
 			_new_trial()
 		_update_hud()
 		return
+	if phase == Phase.FEEDBACK:
+		feedback_left -= delta
+		if feedback_left <= 0.0:
+			_begin_clear()
+		_update_hud()
+		return
+	if phase == Phase.CLEAR:
+		clear_left -= delta
+		if clear_left <= 0.0:
+			_new_trial()
+		_update_hud()
+		return
 	time_left -= delta
 	if time_left <= 0.0:
 		_end_round()
@@ -399,10 +459,6 @@ func _process(delta: float) -> void:
 			flash_bar.visible = false
 			phase = Phase.INPUT
 			_set_status("输入你看到的数量", Color("#7f8ba6"))
-	elif phase == Phase.FEEDBACK:
-		feedback_left -= delta
-		if feedback_left <= 0.0:
-			_new_trial()
 	_update_hud()
 
 
@@ -423,14 +479,35 @@ func _unhandled_input(event: InputEvent) -> void:
 		_confirm()
 
 
+func _begin_clear() -> void:
+	phase = Phase.CLEAR
+	clear_left = CLEAR_TIME
+	canvas.showing = false
+	canvas.queue_redraw()
+	_tint_panel(Color("#1a2740"))
+	_set_status("下一题", Color("#7f8ba6"))
+	_update_hud()
+
+
+func _tint_panel(color: Color) -> void:
+	if panel == null:
+		return
+	var style := StyleBoxFlat.new()
+	style.bg_color = color
+	style.set_corner_radius_all(14)
+	panel.add_theme_stylebox_override("panel", style)
+
+
 func _update_hud() -> void:
 	score_label.text = "得分 %d　连击 %d" % [score, streak]
 	if phase == Phase.READY:
 		time_label.text = "准备"
 	else:
 		time_label.text = "剩余 %d 秒" % ceili(maxf(time_left, 0.0))
-	if phase == Phase.FLASH or phase == Phase.READY:
+	if phase == Phase.FLASH or phase == Phase.READY or phase == Phase.CLEAR:
 		input_label.text = "·"
+	elif phase == Phase.FEEDBACK:
+		input_label.text = str(true_count)
 	elif typed.is_empty():
 		input_label.text = "—"
 	else:

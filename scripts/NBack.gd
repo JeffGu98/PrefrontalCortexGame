@@ -45,6 +45,9 @@ var grid: GridContainer
 var cells: Array[Panel] = []
 var same_btn: Button
 var diff_btn: Button
+var start_btn: Button
+var brief_panel: Panel
+var brief_label: Label
 var timer_track: ColorRect
 var timer_bar: ColorRect
 var restart_button: Button
@@ -52,13 +55,14 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "N-Back"
-	help_text = "3×3 格子会依次亮起一个位置。判断「现在亮的」是否和 N 步之前相同。\n前 N 个只记住、不判分。之后点「相同」或「不同」。\n答对 +10，答错或超时扣命。连对 10 次升 N（最高 4），连错 3 次降 N。"
+	help_text = "3×3 格子会依次亮起一个位置。开局会告诉你当前是几-Back。\n2-Back 就是：现在亮的格子，要不要和往前第 2 个相同。前 2 个只看不点。\n之后点「相同」或「不同」。答对 +10，答错或超时扣命。连对 10 次升 N，连错 3 次降 N。"
 
 
 func _build_game() -> void:
 	_load_best()
 	_build_hud()
 	_build_grid()
+	_build_brief()
 	_build_buttons()
 	_layout_board()
 	_start_round()
@@ -123,6 +127,25 @@ func _build_grid() -> void:
 		cells.append(cell)
 
 
+func _build_brief() -> void:
+	brief_panel = Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#1a2740")
+	style.set_corner_radius_all(14)
+	brief_panel.add_theme_stylebox_override("panel", style)
+	add_child(brief_panel)
+	brief_label = _make_label("", 22, Color("#e8edff"))
+	brief_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	brief_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	brief_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	brief_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	brief_label.offset_left = 24
+	brief_label.offset_right = -24
+	brief_label.offset_top = 16
+	brief_label.offset_bottom = -16
+	brief_panel.add_child(brief_label)
+
+
 func _build_buttons() -> void:
 	same_btn = Button.new()
 	same_btn.text = "相同"
@@ -141,6 +164,15 @@ func _build_buttons() -> void:
 	_style_button(diff_btn, Color("#1a2740"))
 	diff_btn.pressed.connect(_on_answer.bind(false))
 	add_child(diff_btn)
+
+	start_btn = Button.new()
+	start_btn.text = "开始"
+	start_btn.focus_mode = Control.FOCUS_NONE
+	start_btn.add_theme_font_size_override("font_size", 28)
+	start_btn.add_theme_color_override("font_color", Color("#0d1220"))
+	_style_button(start_btn, Color("#4ade80"))
+	start_btn.pressed.connect(_start_play)
+	add_child(start_btn)
 
 
 func _notification(what: int) -> void:
@@ -161,6 +193,9 @@ func _layout_board() -> void:
 	diff_btn.position = Vector2(btn_x + btn_w + 20.0, btn_y)
 	diff_btn.size = Vector2(btn_w, btn_h)
 	diff_btn.custom_minimum_size = Vector2(btn_w, btn_h)
+	start_btn.position = Vector2((vp.x - 280.0) / 2.0, btn_y)
+	start_btn.size = Vector2(280, btn_h)
+	start_btn.custom_minimum_size = Vector2(280, btn_h)
 
 	var hint_y := btn_y - 48.0
 	hint_label.offset_top = hint_y
@@ -180,6 +215,9 @@ func _layout_board() -> void:
 	grid.size = Vector2(total, total)
 	for cell_panel in cells:
 		cell_panel.custom_minimum_size = Vector2(cell, cell)
+	if brief_panel != null:
+		brief_panel.position = grid.position
+		brief_panel.size = grid.size
 
 
 func _start_round() -> void:
@@ -190,18 +228,31 @@ func _start_round() -> void:
 	n_level = START_N
 	history.clear()
 	phase = Phase.READY
-	phase_left = READY_TIME
+	phase_left = 0.0
 	showing = false
 	answered = false
 	_dim_all()
 	if restart_button != null:
 		restart_button.queue_free()
 		restart_button = null
-	var ready := "即将开始 %d-Back" % n_level
+	brief_label.text = _brief_text(n_level)
+	var ready := "先看说明，再开始"
 	if best_score > 0:
 		ready += " · 最佳 %d" % best_score
 	_set_hint(ready, Color("#7f8ba6"))
 	_update_hud()
+
+
+func _brief_text(n: int) -> String:
+	return "当前是 %d-Back\n\n请记住往前第 %d 个亮过的格子。\n现在亮的位置，要和倒着数第 %d 个比是不是同一格。\n\n先看 %d 个，不用点。\n从第 %d 个开始按「相同」或「不同」。" % [n, n, n, n, n + 1]
+
+
+func _start_play() -> void:
+	if phase != Phase.READY:
+		return
+	phase = Phase.PLAY
+	_update_hud()
+	_begin_trial()
 
 
 func _begin_trial() -> void:
@@ -264,7 +315,10 @@ func _hit() -> void:
 		n_level += 1
 		streak = 0
 		wrong_streak = 0
-		_set_hint("升到 %d-Back" % n_level, Color("#ffd75d"))
+		_set_hint("现在要比往前第 %d 个" % n_level, Color("#ffd75d"))
+		_burst_feedback("升到 %d-Back\n记住往前第 %d 个" % [n_level, n_level], Color("#ffd75d"))
+	else:
+		_burst_feedback("+%d" % SCORE_HIT, Color("#4ade80"))
 	_update_hud()
 
 
@@ -273,10 +327,11 @@ func _miss(reason: String) -> void:
 	wrong_streak += 1
 	lives -= 1
 	_set_hint(reason, Color("#ff5d73"))
+	_burst_feedback(reason, Color("#ff5d73"))
 	if n_level > MIN_N and wrong_streak >= DOWN_STREAK:
 		n_level -= 1
 		wrong_streak = 0
-		_set_hint("%s · 降到 %d-Back" % [reason, n_level], Color("#ffd75d"))
+		_set_hint("%s · 现在要比往前第 %d 个" % [reason, n_level], Color("#ffd75d"))
 	_update_hud()
 	if lives <= 0:
 		_end_game()
@@ -286,11 +341,7 @@ func _process(delta: float) -> void:
 	if phase == Phase.OVER:
 		return
 	if phase == Phase.READY:
-		phase_left -= delta
 		_update_hud()
-		if phase_left <= 0.0:
-			phase = Phase.PLAY
-			_begin_trial()
 		return
 	stim_elapsed += delta
 	var ratio := clampf(1.0 - stim_elapsed / SOA, 0.0, 1.0)
@@ -309,10 +360,14 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if phase != Phase.PLAY:
-		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
+		return
+	if phase == Phase.READY:
+		if key.keycode == KEY_ENTER or key.keycode == KEY_SPACE or key.keycode == KEY_KP_ENTER:
+			_start_play()
+		return
+	if phase != Phase.PLAY:
 		return
 	if key.keycode == KEY_F or key.keycode == KEY_LEFT:
 		_on_answer(true)
@@ -336,12 +391,21 @@ func _paint_cell(cell: Panel, color: Color) -> void:
 func _update_hud() -> void:
 	score_label.text = "得分 %d　连击 %d" % [score, streak]
 	lives_label.text = "生命 %d/%d" % [lives, LIVES]
-	n_label.text = "%d-Back" % n_level
-	progress_label.text = "升阶 %d／%d　连错降阶 %d／%d" % [streak, UP_STREAK, wrong_streak, DOWN_STREAK]
+	n_label.text = "%d-Back　·　往前第 %d 个" % [n_level, n_level]
+	if phase == Phase.READY:
+		progress_label.text = "先记住往前第 %d 个格子" % n_level
+	else:
+		progress_label.text = "升阶 %d／%d　连错降阶 %d／%d" % [streak, UP_STREAK, wrong_streak, DOWN_STREAK]
 	var scoring := phase == Phase.PLAY and _is_scoring() and not answered
+	var ready := phase == Phase.READY
 	if same_btn != null:
+		same_btn.visible = not ready
+		diff_btn.visible = not ready
+		start_btn.visible = ready
 		same_btn.modulate = Color.WHITE if scoring else Color(1, 1, 1, 0.4)
 		diff_btn.modulate = Color.WHITE if scoring else Color(1, 1, 1, 0.4)
+	if brief_panel != null:
+		brief_panel.visible = ready
 	if timer_track != null:
 		timer_track.visible = phase == Phase.PLAY
 

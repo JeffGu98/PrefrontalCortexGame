@@ -195,6 +195,7 @@ func _award(gain: int, text: String, color: Color) -> void:
 	phase = Phase.FEEDBACK
 	phase_left = FEEDBACK_TIME
 	_set_hint(text, color)
+	_burst_feedback("+%d" % gain, color)
 	_update_hud()
 
 
@@ -209,6 +210,7 @@ func _fail_wait() -> void:
 	tw.tween_property(score_label, "scale", Vector2(1.15, 1.15), 0.08)
 	tw.tween_property(score_label, "scale", Vector2.ONE, 0.2)
 	_set_hint("等待落空 · 这轮 0 分", Color("#ff5d73"))
+	_burst_feedback("落空", Color("#ff5d73"))
 	_update_hud()
 
 

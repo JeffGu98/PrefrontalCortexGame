@@ -37,6 +37,9 @@ var rule_chip: Label
 var number_label: Label
 var left_btn: Button
 var right_btn: Button
+var start_btn: Button
+var brief_panel: Panel
+var brief_label: Label
 var timer_track: ColorRect
 var timer_bar: ColorRect
 var restart_button: Button
@@ -52,6 +55,7 @@ func _build_game() -> void:
 	_build_hud()
 	_build_rule()
 	_build_number()
+	_build_brief()
 	_build_buttons()
 	_layout_board()
 	_start_round()
@@ -101,6 +105,27 @@ func _build_number() -> void:
 	timer_track.add_child(timer_bar)
 
 
+func _build_brief() -> void:
+	brief_panel = Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#152034")
+	style.set_corner_radius_all(14)
+	brief_panel.add_theme_stylebox_override("panel", style)
+	add_child(brief_panel)
+	brief_label = _make_label(
+		"上方色块就是当前规则。\n蓝底：判断奇数还是偶数\n橙底：判断大于 5 还是小于 5\n\n规则会换。切对了分更高。\n每题 3 秒，看清再点开始。",
+		22,
+		Color("#e8edff")
+	)
+	brief_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	brief_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	brief_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	brief_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	brief_label.offset_left = 24
+	brief_label.offset_right = -24
+	brief_panel.add_child(brief_label)
+
+
 func _build_buttons() -> void:
 	left_btn = Button.new()
 	left_btn.focus_mode = Control.FOCUS_NONE
@@ -115,6 +140,15 @@ func _build_buttons() -> void:
 	right_btn.add_theme_color_override("font_color", Color("#e8edff"))
 	right_btn.pressed.connect(_on_answer.bind(1))
 	add_child(right_btn)
+
+	start_btn = Button.new()
+	start_btn.text = "开始"
+	start_btn.focus_mode = Control.FOCUS_NONE
+	start_btn.add_theme_font_size_override("font_size", 28)
+	start_btn.add_theme_color_override("font_color", Color("#0d1220"))
+	_style_button(start_btn, Color("#4ade80"))
+	start_btn.pressed.connect(_start_play)
+	add_child(start_btn)
 
 
 func _notification(what: int) -> void:
@@ -149,6 +183,12 @@ func _layout_board() -> void:
 	right_btn.position = Vector2(x + btn_w + 20.0, y)
 	right_btn.size = Vector2(btn_w, btn_h)
 	right_btn.custom_minimum_size = Vector2(btn_w, btn_h)
+	start_btn.position = Vector2((vp.x - 280.0) / 2.0, y)
+	start_btn.size = Vector2(280, btn_h)
+	start_btn.custom_minimum_size = Vector2(280, btn_h)
+	if brief_panel != null:
+		brief_panel.position = Vector2(40, 250)
+		brief_panel.size = Vector2(vp.x - 80.0, 260)
 
 
 func _start_round() -> void:
@@ -160,17 +200,23 @@ func _start_round() -> void:
 	is_switch = false
 	waiting = false
 	phase = Phase.READY
-	phase_left = READY_TIME
+	phase_left = 0.0
 	if restart_button != null:
 		restart_button.queue_free()
 		restart_button = null
-	var ready := "蓝=奇偶　橙=大小"
+	var ready := "先看清蓝/橙规则"
 	if best_score > 0:
 		ready += " · 最佳 %d" % best_score
 	_set_hint(ready, Color("#7f8ba6"))
 	number_label.text = ""
 	_paint_rule()
 	_update_hud()
+
+
+func _start_play() -> void:
+	if phase != Phase.READY:
+		return
+	_new_trial()
 
 
 func _new_trial() -> void:
@@ -230,6 +276,7 @@ func _on_answer(side: int) -> void:
 		streak += 1
 		score += pts
 		_set_hint("+%d%s" % [pts, " · 切对了" if is_switch else ""], Color("#4ade80"))
+		_burst_feedback("+%d" % pts, Color("#4ade80"))
 		number_label.modulate = Color("#4ade80")
 		_update_hud()
 		_begin_gap()
@@ -241,6 +288,7 @@ func _miss(reason: String) -> void:
 	streak = 0
 	lives -= 1
 	_set_hint(reason, Color("#ff5d73"))
+	_burst_feedback(reason, Color("#ff5d73"))
 	number_label.modulate = Color("#ff5d73")
 	_update_hud()
 	if lives <= 0:
@@ -264,9 +312,6 @@ func _process(delta: float) -> void:
 	if phase == Phase.OVER:
 		return
 	if phase == Phase.READY:
-		phase_left -= delta
-		if phase_left <= 0.0:
-			_new_trial()
 		return
 	if phase != Phase.PLAY or waiting:
 		return
@@ -279,10 +324,14 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if phase != Phase.PLAY or waiting:
-		return
 	var key := event as InputEventKey
 	if key == null or not key.pressed or key.echo:
+		return
+	if phase == Phase.READY:
+		if key.keycode == KEY_ENTER or key.keycode == KEY_SPACE or key.keycode == KEY_KP_ENTER:
+			_start_play()
+		return
+	if phase != Phase.PLAY or waiting:
 		return
 	if key.keycode == KEY_LEFT or key.keycode == KEY_F:
 		_on_answer(0)
@@ -294,9 +343,17 @@ func _update_hud() -> void:
 	score_label.text = "得分 %d　连击 %d" % [score, streak]
 	lives_label.text = "生命 %d/%d" % [lives, LIVES]
 	var play := phase == Phase.PLAY and not waiting
+	var ready := phase == Phase.READY
 	if left_btn != null:
+		left_btn.visible = not ready
+		right_btn.visible = not ready
+		start_btn.visible = ready
 		left_btn.modulate = Color.WHITE if play else Color(1, 1, 1, 0.45)
 		right_btn.modulate = Color.WHITE if play else Color(1, 1, 1, 0.45)
+	if brief_panel != null:
+		brief_panel.visible = ready
+	if timer_track != null:
+		timer_track.visible = not ready and phase != Phase.OVER
 
 
 func _set_hint(text: String, color: Color) -> void:

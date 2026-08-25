@@ -160,6 +160,7 @@ func _reset_grid() -> void:
 		btn.set_meta("num", numbers[i])
 		btn.disabled = false
 		btn.modulate = Color.WHITE
+		btn.scale = Vector2.ONE
 
 
 func _on_cell_pressed(btn: Button) -> void:
@@ -185,8 +186,12 @@ func _on_cell_pressed(btn: Button) -> void:
 func _mark_correct(btn: Button) -> void:
 	btn.disabled = true
 	btn.modulate = Color("#4ade80")
+	btn.pivot_offset = btn.size * 0.5
+	btn.scale = Vector2(1.12, 1.12)
 	var tween := create_tween()
-	tween.tween_property(btn, "modulate", Color.WHITE, 0.28)
+	tween.set_parallel(true)
+	tween.tween_property(btn, "modulate", Color(0.55, 0.85, 0.7), 0.45)
+	tween.tween_property(btn, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK)
 
 
 func _flash_wrong(btn: Button) -> void:
@@ -210,6 +215,7 @@ func _finish() -> void:
 	var suffix := " · 新纪录！" if is_best else ""
 	status_label.text = "完成！%.2f 秒（点错 %d 次）%s" % [elapsed, mistakes, suffix]
 	status_label.add_theme_color_override("font_color", Color("#ffd75d") if is_best else Color("#4ade80"))
+	_burst_feedback("完成！", Color("#ffd75d") if is_best else Color("#4ade80"))
 
 
 func _refresh_status() -> void:
