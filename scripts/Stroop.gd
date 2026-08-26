@@ -1,5 +1,5 @@
 extends "res://scripts/GameBase.gd"
-## 反向色字 Stroop：点「字体颜色」按钮，抑制「字义」的自动倾向。
+## 反向色字 Stroop：点选项上的字，对上题目字的颜色；选项底色是干扰。
 
 
 const COLORS := [
@@ -12,7 +12,7 @@ const COLORS := [
 const LIVES := 3
 const TRIAL_TIME := 2.0
 const INTER_TRIAL := 0.35
-const HINT_IDLE := "点的是颜色，不是字"
+const HINT_IDLE := "点选项上的字，对上题目字的颜色"
 const BEST_PATH := "user://stroop_best.cfg"
 const TIMER_WIDTH := 400.0
 
@@ -27,18 +27,20 @@ var game_over := false
 var waiting := false
 var trial_id := 0
 
+var stim_panel: Panel
 var word_label: Label
 var score_label: Label
 var lives_label: Label
 var hint_label: Label
 var timer_track: ColorRect
 var timer_bar: ColorRect
+var color_buttons: Array[Button] = []
 var restart_button: Button
 
 
 func _init() -> void:
 	title_text = "反向色字"
-	help_text = "中央出现一个颜色字，字的意思和字体颜色一定不同。\n点下面四个按钮里「字体颜色」对应的那个，不要看字写的是什么。\n每题 2 秒。点错或超时扣一命，三条命用完本局结束。"
+	help_text = "中央是有颜色的字，字义和字体颜色一定不同。\n点下面写着「字体颜色」的按钮。按钮底色是干扰，不要对色块。\n每答完一题四个选项会重排。每题 2 秒。点错或超时扣一命。"
 
 
 func _build_game() -> void:
@@ -65,29 +67,38 @@ func _build_hud() -> void:
 	lives_label.offset_bottom = 128
 	add_child(lives_label)
 
+	stim_panel = Panel.new()
+	stim_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stim_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stim_panel.offset_left = 48
+	stim_panel.offset_right = -48
+	stim_panel.offset_top = 148
+	stim_panel.offset_bottom = 392
+	add_child(stim_panel)
+
+	_paint_panel(Color("#1a2740"))
+
 	word_label = Label.new()
-	word_label.add_theme_font_size_override("font_size", 120)
+	word_label.add_theme_font_size_override("font_size", 150)
 	word_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	word_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	word_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	word_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	word_label.offset_top = 160
-	word_label.offset_bottom = 400
-	add_child(word_label)
+	stim_panel.add_child(word_label)
 
 	hint_label = _make_label(HINT_IDLE, 18, Color("#7f8ba6"))
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	hint_label.offset_top = 408
-	hint_label.offset_bottom = 440
+	hint_label.offset_top = 400
+	hint_label.offset_bottom = 432
 	add_child(hint_label)
 
 	timer_track = ColorRect.new()
 	timer_track.color = Color("#1a2740")
 	timer_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var vp := get_viewport_rect().size
-	timer_track.position = Vector2((vp.x - TIMER_WIDTH) / 2.0, 456)
+	timer_track.position = Vector2((vp.x - TIMER_WIDTH) / 2.0, 440)
 	timer_track.size = Vector2(TIMER_WIDTH, 12)
 	add_child(timer_track)
 
@@ -109,19 +120,62 @@ func _build_color_buttons() -> void:
 	var total_w := btn_w * 2.0 + 20.0
 	var total_h := btn_h * 2.0 + 20.0
 	var vp := get_viewport_rect().size
-	g.position = Vector2((vp.x - total_w) / 2.0, 500.0)
+	g.position = Vector2((vp.x - total_w) / 2.0, 468.0)
 	g.size = Vector2(total_w, total_h)
 	add_child(g)
 
-	for entry in COLORS:
+	for _i in range(COLORS.size()):
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(btn_w, btn_h)
-		btn.text = entry["name"]
-		btn.add_theme_font_size_override("font_size", 40)
-		btn.add_theme_color_override("font_color", Color("#e8edff"))
-		_style_button(btn, Color("#1a2740"))
-		btn.pressed.connect(_on_color_pressed.bind(entry["name"], btn))
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.add_theme_font_size_override("font_size", 44)
+		btn.add_theme_color_override("font_color", Color("#0d1220"))
+		btn.pressed.connect(_on_button_pressed.bind(btn))
 		g.add_child(btn)
+		color_buttons.append(btn)
+
+
+func _paint_panel(bg: Color) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg
+	style.set_corner_radius_all(14)
+	stim_panel.add_theme_stylebox_override("panel", style)
+
+
+func _derange(n: int) -> Array[int]:
+	var idx: Array[int] = []
+	for i in range(n):
+		idx.append(i)
+	for _try in range(32):
+		idx.shuffle()
+		var ok := true
+		for i in range(n):
+			if idx[i] == i:
+				ok = false
+				break
+		if ok:
+			return idx
+	if n >= 2:
+		var tmp := idx[0]
+		idx[0] = idx[1]
+		idx[1] = tmp
+	return idx
+
+
+func _refresh_choices() -> void:
+	var names: Array[int] = []
+	for i in range(COLORS.size()):
+		names.append(i)
+	names.shuffle()
+	var bgs := _derange(COLORS.size())
+	for i in range(color_buttons.size()):
+		var btn := color_buttons[i]
+		var name_idx: int = names[i]
+		var bg_idx: int = bgs[name_idx]
+		btn.modulate = Color.WHITE
+		btn.text = COLORS[name_idx]["name"]
+		btn.add_theme_color_override("font_color", Color("#0d1220"))
+		_style_button(btn, COLORS[bg_idx]["color"])
 
 
 func _new_trial() -> void:
@@ -137,22 +191,28 @@ func _new_trial() -> void:
 	var ink_idx := randi() % COLORS.size()
 	var offset := randi() % (COLORS.size() - 1) + 1
 	var word_idx := (ink_idx + offset) % COLORS.size()
-
 	word_label.text = COLORS[word_idx]["name"]
 	word_label.add_theme_color_override("font_color", COLORS[ink_idx]["color"])
+	_paint_panel(Color("#1a2740"))
 	correct_color = COLORS[ink_idx]["name"]
+	_refresh_choices()
 	_update_hud()
+
+
+func _on_button_pressed(btn: Button) -> void:
+	_on_color_pressed(btn.text, btn)
 
 
 func _on_color_pressed(color_name: String, btn: Button) -> void:
 	if game_over or waiting:
 		return
+	waiting = true
 	if color_name == correct_color:
-		var time_bonus := int(trial_time_left * 5.0)
 		streak += 1
 		best_streak = maxi(best_streak, streak)
-		score += 10 + time_bonus + mini(streak, 10) * 2
+		var time_bonus := int(trial_time_left * 5.0)
 		var pts := 10 + time_bonus + mini(streak, 10) * 2
+		score += pts
 		_set_hint("+%d" % pts, Color("#4ade80"))
 		_burst_feedback("+%d" % pts, Color("#4ade80"))
 		word_label.modulate = Color("#4ade80")
@@ -197,6 +257,7 @@ func _process(delta: float) -> void:
 	trial_time_left -= delta
 	if trial_time_left <= 0.0:
 		trial_time_left = 0.0
+		waiting = true
 		timer_bar.size.x = 0.0
 		_apply_miss("超时")
 		return
@@ -222,6 +283,7 @@ func _end_game() -> void:
 	word_label.text = "结束"
 	word_label.modulate = Color.WHITE
 	word_label.add_theme_color_override("font_color", Color("#e8edff"))
+	_paint_panel(Color("#1a2740"))
 	timer_bar.size.x = 0.0
 	_update_hud()
 

@@ -27,7 +27,7 @@ prefrontal-cortex-game/
 │   ├── NBack.tscn         # N-Back
 │   ├── Switch.tscn        # 任务切换
 │   ├── Track.tscn         # 追踪异色球
-│   ├── Marshmallow.tscn   # 延迟满足
+│   ├── Flanker.tscn       # 中间箭头
 │   └── Hanoi.tscn         # 汉诺塔
 ├── scripts/
 │   ├── GameBase.gd        # 所有游戏的共享脚手架（背景/返回/标题）
@@ -45,3 +45,7 @@ prefrontal-cortex-game/
 - **如何新增一个游戏**（五步流程 + 代码模板）
 - 全部 10 个游戏的实现规格（均已实现）
 - 验证流程与当前已知问题
+
+游戏手感（心流、反馈、难度曲线、技能原子）的摘录见 [docs/game-design.md](docs/game-design.md)，和产品规格分开。
+
+十关哪里空等、哪里封顶死了、按什么顺序改，见 [docs/improvements.md](docs/improvements.md)。
