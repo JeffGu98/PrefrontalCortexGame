@@ -17,12 +17,13 @@ const DISK_COLORS := [
 	Color("#c084fc"),
 ]
 
-enum Phase { PLAY, WON, OVER }
+enum Phase { PICK, PLAY, WON, OVER }
 
-var phase := Phase.PLAY
+var phase := Phase.PICK
 var score := 0
 var best_score := 0
 var disk_n := MIN_DISKS
+var latest_disks := MIN_DISKS
 var moves := 0
 var elapsed := 0.0
 var selected := -1
@@ -37,11 +38,15 @@ var board: Control
 var peg_hits: Array[Button] = []
 var restart_button: Button
 var reset_btn: Button
+var gate_panel: Panel
+var gate_label: Label
+var continue_btn: Button
+var fresh_btn: Button
 
 
 func _init() -> void:
 	title_text = "汉诺塔"
-	help_text = "三根柱子。开始时盘子都在左边，要全部移到右边。\n点一下选出顶上的盘，再点目标柱放下。大盘不能压小盘。乱了可以点「复位」，盘子回左柱，本关步数清零，总分保留。\n最优步数是 2^N−1。最优通关会加盘；步数太多仍可通过，但标成非最优。练的是计划，不是速度。"
+	help_text = "三根柱子。开始时盘子都在左边，要全部移到右边。\n点一下选出顶上的盘，再点目标柱放下。大盘不能压小盘。乱了可以点「复位」，盘子回左柱，本关步数清零，总分保留。\n做到哪一关会记住。再进时选继续最新一关，或从 3 盘重来。\n最优步数是 2^N−1。最优通关会加盘；步数太多仍可通过，但标成非最优。练的是计划，不是速度。"
 
 
 func _build_game() -> void:
@@ -49,8 +54,12 @@ func _build_game() -> void:
 	_build_hud()
 	_build_board()
 	_build_reset_button()
+	_build_gate()
 	_layout_board()
-	_start_level()
+	if latest_disks > MIN_DISKS:
+		_show_gate()
+	else:
+		_start_level()
 
 
 func _build_hud() -> void:
@@ -100,12 +109,51 @@ func _build_reset_button() -> void:
 	_style_button(reset_btn, Color("#1a2740"))
 	reset_btn.pressed.connect(_reset_board)
 	add_child(reset_btn)
+	reset_btn.visible = false
+
+
+func _build_gate() -> void:
+	gate_panel = Panel.new()
+	gate_panel.z_index = 20
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#152034")
+	style.set_corner_radius_all(14)
+	gate_panel.add_theme_stylebox_override("panel", style)
+	add_child(gate_panel)
+	gate_label = _make_label("", 22, Color("#e8edff"))
+	gate_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	gate_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	gate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	gate_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	gate_label.offset_left = 24
+	gate_label.offset_right = -24
+	gate_panel.add_child(gate_label)
+
+	continue_btn = Button.new()
+	continue_btn.focus_mode = Control.FOCUS_NONE
+	continue_btn.add_theme_font_size_override("font_size", 26)
+	continue_btn.add_theme_color_override("font_color", Color("#0d1220"))
+	_style_button(continue_btn, Color("#4ade80"))
+	continue_btn.pressed.connect(_pick_continue)
+	add_child(continue_btn)
+
+	fresh_btn = Button.new()
+	fresh_btn.focus_mode = Control.FOCUS_NONE
+	fresh_btn.add_theme_font_size_override("font_size", 24)
+	fresh_btn.add_theme_color_override("font_color", Color("#e8edff"))
+	_style_button(fresh_btn, Color("#1a2740"))
+	fresh_btn.pressed.connect(_pick_fresh)
+	add_child(fresh_btn)
+	gate_panel.visible = false
+	continue_btn.visible = false
+	fresh_btn.visible = false
 
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and board != null:
 		_layout_board()
-		_layout_disks(false)
+		if not pegs.is_empty():
+			_layout_disks(false)
 
 
 func _layout_board() -> void:
@@ -118,6 +166,13 @@ func _layout_board() -> void:
 	for i in range(PEGS):
 		peg_hits[i].position = Vector2(col_w * i, 0)
 		peg_hits[i].size = Vector2(col_w, board.size.y)
+	if gate_panel != null:
+		gate_panel.position = Vector2(40, 220)
+		gate_panel.size = Vector2(vp.x - 80.0, 220)
+		continue_btn.position = Vector2(40, gate_panel.position.y + 236.0)
+		continue_btn.size = Vector2(vp.x - 80.0, 72)
+		fresh_btn.position = Vector2(40, continue_btn.position.y + 88.0)
+		fresh_btn.size = Vector2(vp.x - 80.0, 64)
 	board.queue_redraw()
 
 
@@ -132,6 +187,45 @@ func _paint_board(c: Control) -> void:
 		c.draw_rect(Rect2(cx - 8.0, 48.0, 16.0, base_y - 48.0), color, true)
 		if i == 2:
 			c.draw_rect(Rect2(cx - 28.0, 36.0, 56.0, 8.0), Color("#4ade80"), true)
+
+
+func _show_gate() -> void:
+	phase = Phase.PICK
+	board.visible = false
+	reset_btn.visible = false
+	gate_panel.visible = true
+	continue_btn.visible = true
+	fresh_btn.visible = true
+	gate_label.text = "上次做到 %d 盘。\n这一局进最新一关，还是从 3 盘重来？" % latest_disks
+	continue_btn.text = "进入最新一关（%d 盘）" % latest_disks
+	fresh_btn.text = "从头开始（3 盘）"
+	_set_hint("选这一局从哪关开始", Color("#7f8ba6"))
+	_update_hud()
+
+
+func _hide_gate() -> void:
+	gate_panel.visible = false
+	continue_btn.visible = false
+	fresh_btn.visible = false
+	board.visible = true
+
+
+func _pick_continue() -> void:
+	if phase != Phase.PICK:
+		return
+	disk_n = latest_disks
+	_hide_gate()
+	_start_level()
+
+
+func _pick_fresh() -> void:
+	if phase != Phase.PICK:
+		return
+	disk_n = MIN_DISKS
+	latest_disks = MIN_DISKS
+	_save_progress()
+	_hide_gate()
+	_start_level()
 
 
 func _start_level() -> void:
@@ -158,6 +252,7 @@ func _start_level() -> void:
 	if restart_button != null:
 		restart_button.queue_free()
 		restart_button = null
+	_hide_gate()
 	_layout_disks(false)
 	_set_hint("把盘子移到右边绿线柱", Color("#7f8ba6"))
 	_update_hud()
@@ -165,6 +260,7 @@ func _start_level() -> void:
 	if reset_btn != null:
 		reset_btn.visible = true
 		reset_btn.modulate = Color.WHITE
+	_remember_level()
 
 
 func _reset_board() -> void:
@@ -275,6 +371,7 @@ func _check_win() -> void:
 		if disk_n < MAX_DISKS:
 			disk_n += 1
 			extra += " · 下一关加盘"
+			_remember_level()
 	elif moves <= limit:
 		extra = " · 非最优，仍通过"
 	else:
@@ -283,7 +380,7 @@ func _check_win() -> void:
 	var is_best := score > best_score
 	if is_best:
 		best_score = score
-		_save_best()
+		_save_progress()
 	var tone := Color("#4ade80") if moves <= optimal else Color("#ffd75d")
 	_set_hint("过关 +%d%s" % [gained, extra], tone)
 	_burst_feedback("过关 +%d" % gained, tone)
@@ -307,7 +404,10 @@ func _process(delta: float) -> void:
 
 func _update_hud() -> void:
 	score_label.text = "得分 %d" % score
-	status_label.text = "%d 盘　步数 %d／最优 %d　用时 %.0f 秒" % [disk_n, moves, _optimal(), elapsed]
+	if phase == Phase.PICK:
+		status_label.text = "上次做到 %d 盘" % latest_disks
+	else:
+		status_label.text = "%d 盘　步数 %d／最优 %d　用时 %.0f 秒" % [disk_n, moves, _optimal(), elapsed]
 
 
 func _set_hint(text: String, color: Color) -> void:
@@ -322,15 +422,23 @@ func _next_or_restart() -> void:
 	_start_level()
 
 
+func _remember_level() -> void:
+	latest_disks = clampi(disk_n, MIN_DISKS, MAX_DISKS)
+	_save_progress()
+
+
 func _load_best() -> void:
 	var config := ConfigFile.new()
 	if config.load(BEST_PATH) == OK:
 		best_score = int(config.get_value("best", "score", 0))
+		latest_disks = clampi(int(config.get_value("best", "disks", MIN_DISKS)), MIN_DISKS, MAX_DISKS)
+		disk_n = latest_disks
 
 
-func _save_best() -> void:
+func _save_progress() -> void:
 	var config := ConfigFile.new()
 	config.set_value("best", "score", best_score)
+	config.set_value("best", "disks", clampi(latest_disks, MIN_DISKS, MAX_DISKS))
 	config.save(BEST_PATH)
 
 
