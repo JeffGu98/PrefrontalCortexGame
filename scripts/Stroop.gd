@@ -10,7 +10,7 @@ const COLORS := [
 ]
 
 const LIVES := 3
-const TRIAL_TIME := 2.0
+const TRIAL_TIME := 2.5
 const INTER_TRIAL := 0.35
 const HINT_IDLE := "点选项上的字，对上题目字的颜色"
 const BEST_PATH := "user://stroop_best.cfg"
@@ -47,7 +47,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "反向色字"
-	help_text = "中央是有颜色的字，字义和字体颜色一定不同。点下面写着「字体颜色」的按钮。\n简单：选项灰底黑字，位置每题仍会变。困难：选项底色是干扰，不要对色块。\n每题 2 秒。点错或超时扣一命。"
+	help_text = "中央是有颜色的字，字义和字体颜色一定不同。点下面写着「字体颜色」的按钮。\n简单：选项灰底黑字，位置每题仍会变。困难：选项底色是干扰，不要对色块。\n每题 2.5 秒。点错或超时扣一命。"
 
 
 func _build_game() -> void:
@@ -135,6 +135,8 @@ func _build_color_buttons() -> void:
 	for _i in range(COLORS.size()):
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(btn_w, btn_h)
+		btn.size = Vector2(btn_w, btn_h)
+		btn.pivot_offset = Vector2(btn_w, btn_h) * 0.5
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.add_theme_font_size_override("font_size", 44)
 		btn.add_theme_color_override("font_color", EASY_INK)
@@ -243,6 +245,8 @@ func _refresh_choices() -> void:
 		var btn := color_buttons[i]
 		var name_idx: int = names[i]
 		btn.modulate = Color.WHITE
+		btn.scale = Vector2.ONE
+		btn.set_pressed_no_signal(false)
 		btn.text = COLORS[name_idx]["name"]
 		btn.add_theme_color_override("font_color", EASY_INK)
 		if easy_mode:
@@ -280,6 +284,7 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 	if game_over or waiting or phase != Phase.PLAY:
 		return
 	waiting = true
+	_press_bounce(btn)
 	if color_name == correct_color:
 		streak += 1
 		best_streak = maxi(best_streak, streak)
@@ -316,6 +321,15 @@ func _begin_gap() -> void:
 	if not is_inside_tree() or game_over or id != trial_id:
 		return
 	_new_trial()
+
+
+func _press_bounce(btn: Button) -> void:
+	btn.release_focus()
+	btn.set_pressed_no_signal(false)
+	btn.pivot_offset = btn.size * 0.5
+	btn.scale = Vector2(0.92, 0.92)
+	var tw := create_tween()
+	tw.tween_property(btn, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _flash_wrong(btn: Button) -> void:

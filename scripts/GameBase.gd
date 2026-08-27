@@ -270,9 +270,12 @@ func _make_label(text: String, font_size: int, color: Color) -> Label:
 
 
 func _style_button(btn: Button, bg: Color) -> void:
+	var pressed := _make_flat(bg.darkened(0.15))
 	btn.add_theme_stylebox_override("normal", _make_flat(bg))
 	btn.add_theme_stylebox_override("hover", _make_flat(bg.lightened(0.12)))
-	btn.add_theme_stylebox_override("pressed", _make_flat(bg.darkened(0.15)))
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("hover_pressed", pressed)
+	btn.add_theme_stylebox_override("focus", _make_flat(bg))
 	btn.add_theme_stylebox_override("disabled", _make_flat(bg.darkened(0.3)))
 
 
