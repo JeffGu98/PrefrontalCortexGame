@@ -10,6 +10,10 @@ var help_text := ""
 
 var _help_overlay: Control
 var _help_open := false
+var _gate_panel: Panel
+var _gate_label: Label
+var _gate_continue_btn: Button
+var _gate_fresh_btn: Button
 
 
 func _ready() -> void:
@@ -19,6 +23,7 @@ func _ready() -> void:
 	if title_text != "":
 		_build_title()
 	_build_help_button()
+	_build_progress_gate()
 	_build_game()
 	_build_help_overlay()
 
@@ -59,6 +64,83 @@ func _build_title() -> void:
 
 ## Overridden by each game to build its own content.
 func _build_game() -> void:
+	pass
+
+
+## Shared continue-or-restart gate used by games that remember a level.
+func _build_progress_gate() -> void:
+	_gate_panel = Panel.new()
+	_gate_panel.z_index = 20
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#152034")
+	style.set_corner_radius_all(14)
+	_gate_panel.add_theme_stylebox_override("panel", style)
+	add_child(_gate_panel)
+	_gate_label = _make_label("", 22, Color("#e8edff"))
+	_gate_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_gate_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_gate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_gate_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_gate_label.offset_left = 24
+	_gate_label.offset_right = -24
+	_gate_panel.add_child(_gate_label)
+
+	_gate_continue_btn = Button.new()
+	_gate_continue_btn.z_index = 21
+	_gate_continue_btn.focus_mode = Control.FOCUS_NONE
+	_gate_continue_btn.add_theme_font_size_override("font_size", 26)
+	_gate_continue_btn.add_theme_color_override("font_color", Color("#0d1220"))
+	_style_button(_gate_continue_btn, Color("#4ade80"))
+	_gate_continue_btn.pressed.connect(_on_progress_continue)
+	add_child(_gate_continue_btn)
+
+	_gate_fresh_btn = Button.new()
+	_gate_fresh_btn.z_index = 21
+	_gate_fresh_btn.focus_mode = Control.FOCUS_NONE
+	_gate_fresh_btn.add_theme_font_size_override("font_size", 24)
+	_gate_fresh_btn.add_theme_color_override("font_color", Color("#e8edff"))
+	_style_button(_gate_fresh_btn, Color("#1a2740"))
+	_gate_fresh_btn.pressed.connect(_on_progress_fresh)
+	add_child(_gate_fresh_btn)
+	_hide_progress_gate()
+	_layout_progress_gate()
+
+
+func _layout_progress_gate() -> void:
+	if _gate_panel == null:
+		return
+	var vp := get_viewport_rect().size
+	_gate_panel.position = Vector2(40, 220)
+	_gate_panel.size = Vector2(vp.x - 80.0, 220)
+	_gate_continue_btn.position = Vector2(40, _gate_panel.position.y + 236.0)
+	_gate_continue_btn.size = Vector2(vp.x - 80.0, 72)
+	_gate_fresh_btn.position = Vector2(40, _gate_continue_btn.position.y + 88.0)
+	_gate_fresh_btn.size = Vector2(vp.x - 80.0, 64)
+
+
+func _show_progress_gate(body: String, continue_text: String, fresh_text: String) -> void:
+	_layout_progress_gate()
+	_gate_label.text = body
+	_gate_continue_btn.text = continue_text
+	_gate_fresh_btn.text = fresh_text
+	_gate_panel.visible = true
+	_gate_continue_btn.visible = true
+	_gate_fresh_btn.visible = true
+
+
+func _hide_progress_gate() -> void:
+	if _gate_panel == null:
+		return
+	_gate_panel.visible = false
+	_gate_continue_btn.visible = false
+	_gate_fresh_btn.visible = false
+
+
+func _on_progress_continue() -> void:
+	pass
+
+
+func _on_progress_fresh() -> void:
 	pass
 
 

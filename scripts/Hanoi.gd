@@ -38,10 +38,6 @@ var board: Control
 var peg_hits: Array[Button] = []
 var restart_button: Button
 var reset_btn: Button
-var gate_panel: Panel
-var gate_label: Label
-var continue_btn: Button
-var fresh_btn: Button
 
 
 func _init() -> void:
@@ -54,7 +50,6 @@ func _build_game() -> void:
 	_build_hud()
 	_build_board()
 	_build_reset_button()
-	_build_gate()
 	_layout_board()
 	if latest_disks > MIN_DISKS:
 		_show_gate()
@@ -112,43 +107,6 @@ func _build_reset_button() -> void:
 	reset_btn.visible = false
 
 
-func _build_gate() -> void:
-	gate_panel = Panel.new()
-	gate_panel.z_index = 20
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("#152034")
-	style.set_corner_radius_all(14)
-	gate_panel.add_theme_stylebox_override("panel", style)
-	add_child(gate_panel)
-	gate_label = _make_label("", 22, Color("#e8edff"))
-	gate_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	gate_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	gate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	gate_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	gate_label.offset_left = 24
-	gate_label.offset_right = -24
-	gate_panel.add_child(gate_label)
-
-	continue_btn = Button.new()
-	continue_btn.focus_mode = Control.FOCUS_NONE
-	continue_btn.add_theme_font_size_override("font_size", 26)
-	continue_btn.add_theme_color_override("font_color", Color("#0d1220"))
-	_style_button(continue_btn, Color("#4ade80"))
-	continue_btn.pressed.connect(_pick_continue)
-	add_child(continue_btn)
-
-	fresh_btn = Button.new()
-	fresh_btn.focus_mode = Control.FOCUS_NONE
-	fresh_btn.add_theme_font_size_override("font_size", 24)
-	fresh_btn.add_theme_color_override("font_color", Color("#e8edff"))
-	_style_button(fresh_btn, Color("#1a2740"))
-	fresh_btn.pressed.connect(_pick_fresh)
-	add_child(fresh_btn)
-	gate_panel.visible = false
-	continue_btn.visible = false
-	fresh_btn.visible = false
-
-
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and board != null:
 		_layout_board()
@@ -166,13 +124,7 @@ func _layout_board() -> void:
 	for i in range(PEGS):
 		peg_hits[i].position = Vector2(col_w * i, 0)
 		peg_hits[i].size = Vector2(col_w, board.size.y)
-	if gate_panel != null:
-		gate_panel.position = Vector2(40, 220)
-		gate_panel.size = Vector2(vp.x - 80.0, 220)
-		continue_btn.position = Vector2(40, gate_panel.position.y + 236.0)
-		continue_btn.size = Vector2(vp.x - 80.0, 72)
-		fresh_btn.position = Vector2(40, continue_btn.position.y + 88.0)
-		fresh_btn.size = Vector2(vp.x - 80.0, 64)
+	_layout_progress_gate()
 	board.queue_redraw()
 
 
@@ -193,24 +145,21 @@ func _show_gate() -> void:
 	phase = Phase.PICK
 	board.visible = false
 	reset_btn.visible = false
-	gate_panel.visible = true
-	continue_btn.visible = true
-	fresh_btn.visible = true
-	gate_label.text = "上次做到 %d 盘。\n这一局进最新一关，还是从 3 盘重来？" % latest_disks
-	continue_btn.text = "进入最新一关（%d 盘）" % latest_disks
-	fresh_btn.text = "从头开始（3 盘）"
+	_show_progress_gate(
+		"上次做到 %d 盘。\n这一局进最新一关，还是从 3 盘重来？" % latest_disks,
+		"进入最新一关（%d 盘）" % latest_disks,
+		"从头开始（3 盘）"
+	)
 	_set_hint("选这一局从哪关开始", Color("#7f8ba6"))
 	_update_hud()
 
 
 func _hide_gate() -> void:
-	gate_panel.visible = false
-	continue_btn.visible = false
-	fresh_btn.visible = false
+	_hide_progress_gate()
 	board.visible = true
 
 
-func _pick_continue() -> void:
+func _on_progress_continue() -> void:
 	if phase != Phase.PICK:
 		return
 	disk_n = latest_disks
@@ -218,7 +167,7 @@ func _pick_continue() -> void:
 	_start_level()
 
 
-func _pick_fresh() -> void:
+func _on_progress_fresh() -> void:
 	if phase != Phase.PICK:
 		return
 	disk_n = MIN_DISKS

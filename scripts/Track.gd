@@ -16,7 +16,7 @@ const PICK := Color("#4ade80")
 const WRONG := Color("#ff5d73")
 const AXIS_DEAD := PI / 9.0
 
-enum Phase { READY, HIGHLIGHT, MOVE, PICK, FEEDBACK, OVER }
+enum Phase { GATE, READY, HIGHLIGHT, MOVE, PICK, FEEDBACK, OVER }
 
 var phase := Phase.READY
 var phase_left := 0.0
@@ -25,6 +25,7 @@ var lives := LIVES
 var streak := 0
 var best_score := 0
 var ball_count := START_BALLS
+var latest_balls := START_BALLS
 var odd_count := 1
 var positions: Array[Vector2] = []
 var velocities: Array[Vector2] = []
@@ -43,7 +44,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "追踪异色球"
-	help_text = "开始时若干球里会有 1–3 个黄色异色球，先记住。\n随后全部变成蓝色并乱动，停下后把刚才那些异色球点出来，再按确定。\n全对 +20 并加一个球；点错或漏选扣一命。"
+	help_text = "开始时若干球里会有 1–3 个黄色异色球，先记住。\n随后全部变成蓝色并乱动，停下后把刚才那些异色球点出来，再按确定。\n全对 +20 并加一个球；点错或漏选扣一命。\n做到哪一档会记住。再进时选继续最新一关，或从 6 个球重来。"
 
 
 func _build_game() -> void:
@@ -52,7 +53,10 @@ func _build_game() -> void:
 	_build_canvas()
 	_build_confirm()
 	_layout_board()
-	_start_round()
+	if latest_balls > START_BALLS:
+		_show_gate()
+	else:
+		_start_round()
 
 
 func _build_hud() -> void:
@@ -107,13 +111,54 @@ func _layout_board() -> void:
 	hint_label.offset_bottom = confirm_btn.position.y - 8.0
 	canvas.position = Vector2(28, 148)
 	canvas.size = Vector2(vp.x - 56.0, hint_label.offset_top - 160.0)
+	_layout_progress_gate()
+
+
+func _show_gate() -> void:
+	phase = Phase.GATE
+	canvas.visible = false
+	confirm_btn.visible = false
+	if restart_button != null:
+		restart_button.queue_free()
+		restart_button = null
+	_show_progress_gate(
+		"上次做到 %d 个球。\n这一局进最新一关，还是从 6 个球重来？" % latest_balls,
+		"进入最新一关（%d 个球）" % latest_balls,
+		"从头开始（6 个球）"
+	)
+	_set_hint("选这一局从哪关开始", Color("#7f8ba6"))
+	_update_hud()
+
+
+func _hide_gate() -> void:
+	_hide_progress_gate()
+	canvas.visible = true
+	confirm_btn.visible = true
+
+
+func _on_progress_continue() -> void:
+	if phase != Phase.GATE:
+		return
+	ball_count = latest_balls
+	_hide_gate()
+	_start_round()
+
+
+func _on_progress_fresh() -> void:
+	if phase != Phase.GATE:
+		return
+	ball_count = START_BALLS
+	latest_balls = START_BALLS
+	_save_progress()
+	_hide_gate()
+	_start_round()
 
 
 func _start_round() -> void:
+	_hide_gate()
 	score = 0
 	lives = LIVES
 	streak = 0
-	ball_count = START_BALLS
 	odd_count = 1
 	phase = Phase.READY
 	phase_left = 1.0
@@ -125,6 +170,7 @@ func _start_round() -> void:
 	if best_score > 0:
 		ready += " · 最佳 %d" % best_score
 	_set_hint(ready, Color("#7f8ba6"))
+	_remember_level()
 	_update_hud()
 	canvas.queue_redraw()
 
@@ -229,6 +275,7 @@ func _confirm() -> void:
 		score += SCORE_ALL
 		if ball_count < MAX_BALLS:
 			ball_count += 1
+			_remember_level()
 		_set_hint("全对  +%d" % SCORE_ALL, Color("#4ade80"))
 		_burst_feedback("全对  +%d" % SCORE_ALL, Color("#4ade80"))
 	else:
@@ -243,7 +290,7 @@ func _confirm() -> void:
 
 
 func _process(delta: float) -> void:
-	if phase == Phase.OVER:
+	if phase == Phase.OVER or phase == Phase.GATE:
 		return
 	pulse += delta
 	if phase == Phase.MOVE:
@@ -310,7 +357,12 @@ func _step_move(delta: float) -> void:
 
 func _update_hud() -> void:
 	score_label.text = "得分 %d　连击 %d　球 %d" % [score, streak, ball_count]
-	lives_label.text = "生命 %d/%d" % [lives, LIVES]
+	if phase == Phase.GATE:
+		lives_label.add_theme_color_override("font_color", Color("#8ab4ff"))
+		lives_label.text = "上次做到 %d 个球" % latest_balls
+	else:
+		lives_label.add_theme_color_override("font_color", Color("#ff8f9d"))
+		lives_label.text = "生命 %d/%d" % [lives, LIVES]
 	if confirm_btn != null:
 		confirm_btn.modulate = Color.WHITE if phase == Phase.PICK else Color(1, 1, 1, 0.4)
 
@@ -325,7 +377,7 @@ func _end_game() -> void:
 	var is_best := score > best_score
 	if is_best:
 		best_score = score
-		_save_best()
+		_save_progress()
 	var suffix := " · 新纪录！" if is_best else ""
 	if best_score > 0 and not is_best:
 		suffix = " · 最佳 %d" % best_score
@@ -339,15 +391,23 @@ func _restart() -> void:
 	_start_round()
 
 
+func _remember_level() -> void:
+	latest_balls = clampi(ball_count, START_BALLS, MAX_BALLS)
+	_save_progress()
+
+
 func _load_best() -> void:
 	var config := ConfigFile.new()
 	if config.load(BEST_PATH) == OK:
 		best_score = int(config.get_value("best", "score", 0))
+		latest_balls = clampi(int(config.get_value("best", "balls", START_BALLS)), START_BALLS, MAX_BALLS)
+		ball_count = latest_balls
 
 
-func _save_best() -> void:
+func _save_progress() -> void:
 	var config := ConfigFile.new()
 	config.set_value("best", "score", best_score)
+	config.set_value("best", "balls", clampi(latest_balls, START_BALLS, MAX_BALLS))
 	config.save(BEST_PATH)
 
 

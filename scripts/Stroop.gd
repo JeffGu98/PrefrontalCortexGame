@@ -1,5 +1,5 @@
 extends "res://scripts/GameBase.gd"
-## 反向色字 Stroop：点选项上的字，对上题目字的颜色；选项底色是干扰。
+## 反向色字 Stroop：点选项上的字，对上题目字的颜色；困难模式选项底色是干扰。
 
 
 const COLORS := [
@@ -15,7 +15,13 @@ const INTER_TRIAL := 0.35
 const HINT_IDLE := "点选项上的字，对上题目字的颜色"
 const BEST_PATH := "user://stroop_best.cfg"
 const TIMER_WIDTH := 400.0
+const EASY_BG := Color("#c5cdd8")
+const EASY_INK := Color("#0d1220")
 
+enum Phase { GATE, PLAY, OVER }
+
+var phase := Phase.GATE
+var easy_mode := true
 var score := 0
 var lives := LIVES
 var streak := 0
@@ -34,20 +40,22 @@ var lives_label: Label
 var hint_label: Label
 var timer_track: ColorRect
 var timer_bar: ColorRect
+var choice_grid: GridContainer
 var color_buttons: Array[Button] = []
 var restart_button: Button
 
 
 func _init() -> void:
 	title_text = "反向色字"
-	help_text = "中央是有颜色的字，字义和字体颜色一定不同。\n点下面写着「字体颜色」的按钮。按钮底色是干扰，不要对色块。\n每答完一题四个选项会重排。每题 2 秒。点错或超时扣一命。"
+	help_text = "中央是有颜色的字，字义和字体颜色一定不同。点下面写着「字体颜色」的按钮。\n简单：选项灰底黑字，位置每题仍会变。困难：选项底色是干扰，不要对色块。\n每题 2 秒。点错或超时扣一命。"
 
 
 func _build_game() -> void:
 	_load_best()
 	_build_hud()
 	_build_color_buttons()
-	_new_trial()
+	_layout_progress_gate()
+	_show_gate()
 
 
 func _build_hud() -> void:
@@ -111,28 +119,91 @@ func _build_hud() -> void:
 
 
 func _build_color_buttons() -> void:
-	var g := GridContainer.new()
-	g.columns = 2
-	g.add_theme_constant_override("h_separation", 20)
-	g.add_theme_constant_override("v_separation", 20)
+	choice_grid = GridContainer.new()
+	choice_grid.columns = 2
+	choice_grid.add_theme_constant_override("h_separation", 20)
+	choice_grid.add_theme_constant_override("v_separation", 20)
 	var btn_w := 260.0
 	var btn_h := 160.0
 	var total_w := btn_w * 2.0 + 20.0
 	var total_h := btn_h * 2.0 + 20.0
 	var vp := get_viewport_rect().size
-	g.position = Vector2((vp.x - total_w) / 2.0, 468.0)
-	g.size = Vector2(total_w, total_h)
-	add_child(g)
+	choice_grid.position = Vector2((vp.x - total_w) / 2.0, 468.0)
+	choice_grid.size = Vector2(total_w, total_h)
+	add_child(choice_grid)
 
 	for _i in range(COLORS.size()):
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(btn_w, btn_h)
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.add_theme_font_size_override("font_size", 44)
-		btn.add_theme_color_override("font_color", Color("#0d1220"))
+		btn.add_theme_color_override("font_color", EASY_INK)
 		btn.pressed.connect(_on_button_pressed.bind(btn))
-		g.add_child(btn)
+		choice_grid.add_child(btn)
 		color_buttons.append(btn)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		_layout_progress_gate()
+
+
+func _show_gate() -> void:
+	phase = Phase.GATE
+	waiting = true
+	game_over = false
+	stim_panel.visible = false
+	timer_track.visible = false
+	hint_label.visible = false
+	choice_grid.visible = false
+	if restart_button != null:
+		restart_button.queue_free()
+		restart_button = null
+	_show_progress_gate(
+		"这一局要简单还是困难？\n简单：选项灰底黑字，位置仍会变。\n困难：选项底色是干扰。",
+		"简单",
+		"困难"
+	)
+	_set_hint("选这一局的难度", Color("#7f8ba6"))
+	_update_hud()
+
+
+func _hide_gate() -> void:
+	_hide_progress_gate()
+	stim_panel.visible = true
+	timer_track.visible = true
+	hint_label.visible = true
+	choice_grid.visible = true
+
+
+func _on_progress_continue() -> void:
+	if phase != Phase.GATE:
+		return
+	easy_mode = true
+	_start_play()
+
+
+func _on_progress_fresh() -> void:
+	if phase != Phase.GATE:
+		return
+	easy_mode = false
+	_start_play()
+
+
+func _start_play() -> void:
+	_hide_gate()
+	phase = Phase.PLAY
+	score = 0
+	lives = LIVES
+	streak = 0
+	best_streak = 0
+	game_over = false
+	waiting = false
+	trial_id += 1
+	if restart_button != null:
+		restart_button.queue_free()
+		restart_button = null
+	_new_trial()
 
 
 func _paint_panel(bg: Color) -> void:
@@ -171,15 +242,17 @@ func _refresh_choices() -> void:
 	for i in range(color_buttons.size()):
 		var btn := color_buttons[i]
 		var name_idx: int = names[i]
-		var bg_idx: int = bgs[name_idx]
 		btn.modulate = Color.WHITE
 		btn.text = COLORS[name_idx]["name"]
-		btn.add_theme_color_override("font_color", Color("#0d1220"))
-		_style_button(btn, COLORS[bg_idx]["color"])
+		btn.add_theme_color_override("font_color", EASY_INK)
+		if easy_mode:
+			_style_button(btn, EASY_BG)
+		else:
+			_style_button(btn, COLORS[bgs[name_idx]]["color"])
 
 
 func _new_trial() -> void:
-	if game_over:
+	if game_over or phase != Phase.PLAY:
 		return
 	waiting = false
 	word_label.modulate = Color.WHITE
@@ -204,7 +277,7 @@ func _on_button_pressed(btn: Button) -> void:
 
 
 func _on_color_pressed(color_name: String, btn: Button) -> void:
-	if game_over or waiting:
+	if game_over or waiting or phase != Phase.PLAY:
 		return
 	waiting = true
 	if color_name == correct_color:
@@ -252,7 +325,7 @@ func _flash_wrong(btn: Button) -> void:
 
 
 func _process(delta: float) -> void:
-	if game_over or waiting:
+	if game_over or waiting or phase != Phase.PLAY:
 		return
 	trial_time_left -= delta
 	if trial_time_left <= 0.0:
@@ -268,7 +341,12 @@ func _process(delta: float) -> void:
 
 func _update_hud() -> void:
 	score_label.text = "得分 %d　连击 %d" % [score, streak]
-	lives_label.text = "生命 %d/%d" % [lives, LIVES]
+	if phase == Phase.GATE:
+		lives_label.add_theme_color_override("font_color", Color("#8ab4ff"))
+		lives_label.text = "选简单或困难"
+	else:
+		lives_label.add_theme_color_override("font_color", Color("#ff8f9d"))
+		lives_label.text = "生命 %d/%d · %s" % [lives, LIVES, "简单" if easy_mode else "困难"]
 
 
 func _set_hint(text: String, color: Color) -> void:
@@ -277,6 +355,7 @@ func _set_hint(text: String, color: Color) -> void:
 
 
 func _end_game() -> void:
+	phase = Phase.OVER
 	game_over = true
 	waiting = true
 	trial_id += 1
@@ -303,17 +382,7 @@ func _end_game() -> void:
 
 
 func _restart() -> void:
-	trial_id += 1
-	score = 0
-	lives = LIVES
-	streak = 0
-	best_streak = 0
-	game_over = false
-	waiting = false
-	if restart_button != null:
-		restart_button.queue_free()
-		restart_button = null
-	_new_trial()
+	_start_play()
 
 
 func _load_best() -> void:
