@@ -1,32 +1,24 @@
 extends "res://scripts/GameBase.gd"
-## 舒尔特方格：动物线图沿轮廓切成不规则块，数字叠在块上。
+## 舒尔特方格：动物剪影切成不规则块，数字叠在块上。
 
 
 const MIN_SIZE := 5
 const MAX_SIZE := 7
 const BEST_PATH := "user://schulte_best.cfg"
+const ASSET_DIR := "res://assets/schulte/"
+const NAMES_PATH := "res://assets/schulte/names.cfg"
 const HUD_TOP := 156.0
 const SIDE_MARGIN := 28.0
 const BOTTOM_RESERVE := 108.0
 const RESTART_W := 220.0
 const RESTART_H := 60.0
 const NEXT_BOARD_GAP := 0.7
-const MASK_SIZE := 240
-const CRACK := 1.6
-const BG := Color("#0d1220")
+const MASK_SIZE := 256
+const CRACK := 1.2
+const DEBUG_PERF := false
 const LINE := Color("#f3ead2")
-const ANIMALS := [
-	{"id": "cat", "name": "猫", "path": "res://assets/schulte/cat.png"},
-	{"id": "dog", "name": "狗", "path": "res://assets/schulte/dog.png"},
-	{"id": "fox", "name": "狐狸", "path": "res://assets/schulte/fox.png"},
-	{"id": "panda", "name": "熊猫", "path": "res://assets/schulte/panda.png"},
-	{"id": "elephant", "name": "大象", "path": "res://assets/schulte/elephant.png"},
-	{"id": "owl", "name": "猫头鹰", "path": "res://assets/schulte/owl.png"},
-	{"id": "tiger", "name": "老虎", "path": "res://assets/schulte/tiger.png"},
-	{"id": "rabbit", "name": "兔子", "path": "res://assets/schulte/rabbit.png"},
-	{"id": "penguin", "name": "企鹅", "path": "res://assets/schulte/penguin.png"},
-	{"id": "deer", "name": "小鹿", "path": "res://assets/schulte/deer.png"},
-]
+const WAIT_TINT := Color(0.82, 0.86, 0.94)
+const DONE_NUM := Color("#2a3548")
 
 enum Phase { GATE, PLAY }
 
@@ -45,6 +37,7 @@ var animal_id := ""
 var animal_name := ""
 var animal_img: Image
 var piece_info: Array = []
+var animals: Array = []
 
 var board: Control
 var time_label: Label
@@ -55,10 +48,11 @@ var cells: Array = []
 
 func _init() -> void:
 	title_text = "舒尔特方格"
-	help_text = "每盘抽一张动物线图，沿外轮廓切成不规则小块，数字叠在块上。从 1 开始按顺序点，越快越好。点对揭开这块，点错闪红但不重来。第一次点击开始计时。\n点完 5×5 会上 6×6，再上 7×7，换一张新图。块的位置不会在中途乱动。\n做到哪一档会记住。再进时选继续最新一档，或从 5×5 重来。"
+	help_text = "每盘抽一张动物剪影，沿外形切成不规则小块，数字叠在块上。从 1 开始按顺序点，越快越好。点对揭开这块，点错闪红但不重来。第一次点击开始计时。\n点完 5×5 会上 6×6，再上 7×7，换一张新图。块的位置不会在中途乱动。\n做到哪一档会记住。再进时选继续最新一档，或从 5×5 重来。"
 
 
 func _build_game() -> void:
+	_load_animals()
 	_load_best()
 	_build_hud()
 	_build_board()
@@ -89,6 +83,7 @@ func _build_hud() -> void:
 func _build_board() -> void:
 	board = Control.new()
 	board.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	board.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(board)
 
 
@@ -184,26 +179,56 @@ func _on_progress_fresh() -> void:
 	_start_board(MIN_SIZE)
 
 
+func _load_animals() -> void:
+	animals.clear()
+	var labels := {}
+	var cfg := ConfigFile.new()
+	if cfg.load(NAMES_PATH) == OK:
+		for key in cfg.get_section_keys("names"):
+			labels[String(key)] = str(cfg.get_value("names", key))
+	var files: Array[String] = []
+	var dir := DirAccess.open(ASSET_DIR)
+	if dir != null:
+		dir.list_dir_begin()
+		var fname := dir.get_next()
+		while fname != "":
+			if not dir.current_is_dir() and fname.get_extension().to_lower() == "png" and not fname.begins_with("_"):
+				files.append(fname)
+			fname = dir.get_next()
+		dir.list_dir_end()
+	files.sort()
+	for fname in files:
+		var id := fname.get_basename()
+		animals.append({
+			"id": id,
+			"name": str(labels.get(id, id)),
+			"path": ASSET_DIR + fname,
+		})
+
+
 func _pick_animal() -> void:
 	var pool: Array = []
-	for a in ANIMALS:
+	for a in animals:
 		if String(a["id"]) != last_animal_id:
 			pool.append(a)
 	if pool.is_empty():
-		pool = ANIMALS.duplicate()
+		pool = animals.duplicate()
+	animal_img = Image.create(MASK_SIZE, MASK_SIZE, false, Image.FORMAT_RGBA8)
+	animal_img.fill(Color(0, 0, 0, 0))
+	if pool.is_empty():
+		animal_id = ""
+		animal_name = "剪影"
+		return
 	var picked: Dictionary = pool.pick_random()
 	animal_id = String(picked["id"])
 	animal_name = String(picked["name"])
 	last_animal_id = animal_id
 	var tex := load(String(picked["path"])) as Texture2D
-	animal_img = null
 	if tex != null:
-		animal_img = tex.get_image()
-	if animal_img == null:
-		animal_img = Image.create(MASK_SIZE, MASK_SIZE, false, Image.FORMAT_RGBA8)
-		animal_img.fill(BG)
-	else:
-		animal_img.convert(Image.FORMAT_RGBA8)
+		var img := tex.get_image()
+		if img != null:
+			animal_img = img
+			animal_img.convert(Image.FORMAT_RGBA8)
 
 
 func _start_new() -> void:
@@ -226,12 +251,20 @@ func _start_board(size: int) -> void:
 	mistakes = 0
 	time_label.text = "时间  0.00 秒"
 	_hide_gate()
+	var t0 := Time.get_ticks_msec()
 	_pick_animal()
+	var t1 := Time.get_ticks_msec()
 	_shatter()
+	var t2 := Time.get_ticks_msec()
 	_rebuild_cells()
+	var t3 := Time.get_ticks_msec()
 	_layout_board()
 	_remember_level()
 	_refresh_status()
+	if DEBUG_PERF:
+		print("schulte board %dx%d pick=%d shatter=%d rebuild=%d total=%d" % [
+			grid_size, grid_size, t1 - t0, t2 - t1, t3 - t2, t3 - t0
+		])
 
 
 func _clear_board() -> void:
@@ -252,10 +285,11 @@ func _rebuild_cells() -> void:
 		var btn := TextureButton.new()
 		btn.ignore_texture_size = true
 		btn.stretch_mode = TextureButton.STRETCH_SCALE
+		btn.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		btn.texture_normal = info["tex"]
 		btn.texture_click_mask = info["mask"]
 		btn.focus_mode = Control.FOCUS_NONE
-		btn.modulate = Color(0.82, 0.86, 0.94)
+		btn.modulate = WAIT_TINT
 		btn.set_meta("num", numbers[i])
 		btn.set_meta("done", false)
 		btn.set_meta("uv_rect", info["uv_rect"])
@@ -296,7 +330,9 @@ func _on_cell_pressed(btn: TextureButton) -> void:
 
 func _mark_correct(btn: TextureButton) -> void:
 	btn.set_meta("done", true)
-	btn.get_node("Num").visible = false
+	var num: Label = btn.get_node("Num")
+	num.visible = true
+	num.add_theme_color_override("font_color", DONE_NUM)
 	btn.pivot_offset = btn.size * 0.5
 	btn.scale = Vector2(1.06, 1.06)
 	var tween := create_tween()
@@ -308,7 +344,7 @@ func _mark_correct(btn: TextureButton) -> void:
 func _flash_wrong(btn: TextureButton) -> void:
 	var tween := create_tween()
 	tween.tween_property(btn, "modulate", Color(1.0, 0.4, 0.45), 0.05)
-	tween.tween_property(btn, "modulate", Color(0.82, 0.86, 0.94), 0.28)
+	tween.tween_property(btn, "modulate", WAIT_TINT, 0.28)
 
 
 func _process(delta: float) -> void:
@@ -400,20 +436,23 @@ func _shatter() -> void:
 	piece_info.clear()
 	if animal_img == null:
 		return
-	var src := animal_img.duplicate()
-	src.convert(Image.FORMAT_RGBA8)
+	var t0 := Time.get_ticks_msec()
+	var src_full := animal_img.duplicate()
+	src_full.convert(Image.FORMAT_RGBA8)
+	var src := src_full.duplicate()
 	src.resize(MASK_SIZE, MASK_SIZE, Image.INTERPOLATE_BILINEAR)
-	var inside := _silhouette(src)
+	var t1 := Time.get_ticks_msec()
+	var inside := _alpha_mask(src)
+	var center := _mask_center(inside)
 	var n := grid_size
 	var count := n * n
-	var sites := _place_sites(inside, n)
+	var sites := _place_sites(inside, n, center)
+	var t2 := Time.get_ticks_msec()
 	var labels := PackedInt32Array()
 	labels.resize(MASK_SIZE * MASK_SIZE)
 	labels.fill(-1)
-	_assign_voronoi(inside, sites, labels)
-	_lloyd(inside, sites, labels)
-	_assign_voronoi(inside, sites, labels)
-	var crack2 := CRACK * CRACK
+	_assign_voronoi(inside, sites, labels, n)
+	var t3 := Time.get_ticks_msec()
 	var mins: Array[Vector2i] = []
 	var maxs: Array[Vector2i] = []
 	var sums: Array[Vector2] = []
@@ -425,49 +464,69 @@ func _shatter() -> void:
 		sums.append(Vector2.ZERO)
 	for y in range(MASK_SIZE):
 		for x in range(MASK_SIZE):
-			var idx := y * MASK_SIZE + x
-			if not inside[idx]:
-				continue
-			var lab := labels[idx]
+			var lab := labels[y * MASK_SIZE + x]
 			if lab < 0:
-				continue
-			var best_d := _dist2(Vector2(x, y), sites[lab])
-			var second := INF
-			for j in range(count):
-				if j == lab:
-					continue
-				var d := _dist2(Vector2(x, y), sites[j])
-				if d < second:
-					second = d
-			if second - best_d < crack2:
-				labels[idx] = -1
 				continue
 			area[lab] += 1
 			sums[lab] += Vector2(x, y)
 			mins[lab] = Vector2i(mini(mins[lab].x, x), mini(mins[lab].y, y))
 			maxs[lab] = Vector2i(maxi(maxs[lab].x, x), maxi(maxs[lab].y, y))
+	var t4 := Time.get_ticks_msec()
+	var paint := src_full
+	if src_full.get_width() > 512:
+		paint = src_full.duplicate()
+		paint.resize(512, 512, Image.INTERPOLATE_BILINEAR)
+	var src_w: int = paint.get_width()
+	var src_h: int = paint.get_height()
+	var src_bytes: PackedByteArray = paint.get_data()
+	var sx := float(src_w) / float(MASK_SIZE)
+	var sy := float(src_h) / float(MASK_SIZE)
+	var cream_r := int(LINE.r * 255.0)
+	var cream_g := int(LINE.g * 255.0)
+	var cream_b := int(LINE.b * 255.0)
 	for i in range(count):
 		if area[i] <= 0:
 			var p: Vector2 = sites[i]
-			var px := clampi(int(p.x), 0, MASK_SIZE - 1)
-			var py := clampi(int(p.y), 0, MASK_SIZE - 1)
-			mins[i] = Vector2i(maxi(px - 4, 0), maxi(py - 4, 0))
-			maxs[i] = Vector2i(mini(px + 4, MASK_SIZE - 1), mini(py + 4, MASK_SIZE - 1))
-			sums[i] = Vector2(px, py)
+			var fx := clampi(int(p.x), 0, MASK_SIZE - 1)
+			var fy := clampi(int(p.y), 0, MASK_SIZE - 1)
+			mins[i] = Vector2i(maxi(fx - 4, 0), maxi(fy - 4, 0))
+			maxs[i] = Vector2i(mini(fx + 4, MASK_SIZE - 1), mini(fy + 4, MASK_SIZE - 1))
+			sums[i] = Vector2(fx, fy)
 			area[i] = 1
 		var x0: int = mins[i].x
 		var y0: int = mins[i].y
 		var w: int = maxi(maxs[i].x - x0 + 1, 1)
 		var h: int = maxi(maxs[i].y - y0 + 1, 1)
-		var piece := Image.create(w, h, false, Image.FORMAT_RGBA8)
-		piece.fill(Color(0, 0, 0, 0))
-		for y in range(y0, y0 + h):
-			for x in range(x0, x0 + w):
-				if labels[y * MASK_SIZE + x] != i:
+		var src_x0 := clampi(int(floor(float(x0) * sx)), 0, src_w - 1)
+		var src_y0 := clampi(int(floor(float(y0) * sy)), 0, src_h - 1)
+		var pw := clampi(int(ceil(float(w) * sx)), 1, src_w - src_x0)
+		var ph := clampi(int(ceil(float(h) * sy)), 1, src_h - src_y0)
+		var piece_bytes := PackedByteArray()
+		piece_bytes.resize(pw * ph * 4)
+		for py in range(ph):
+			var src_row := ((src_y0 + py) * src_w + src_x0) * 4
+			var dst_row := py * pw * 4
+			for px in range(pw):
+				var mx := clampi(int(floor(float(src_x0 + px) / sx)), 0, MASK_SIZE - 1)
+				var my := clampi(int(floor(float(src_y0 + py) / sy)), 0, MASK_SIZE - 1)
+				if labels[my * MASK_SIZE + mx] != i:
 					continue
-				var c: Color = src.get_pixel(x, y)
-				c.a = 1.0
-				piece.set_pixel(x - x0, y - y0, c)
+				var si: int = src_row + px * 4
+				var a: int = src_bytes[si + 3]
+				if a <= 5:
+					continue
+				var di: int = dst_row + px * 4
+				if a < 51:
+					piece_bytes[di] = cream_r
+					piece_bytes[di + 1] = cream_g
+					piece_bytes[di + 2] = cream_b
+					piece_bytes[di + 3] = a
+				else:
+					piece_bytes[di] = src_bytes[si]
+					piece_bytes[di + 1] = src_bytes[si + 1]
+					piece_bytes[di + 2] = src_bytes[si + 2]
+					piece_bytes[di + 3] = a
+		var piece := Image.create_from_data(pw, ph, false, Image.FORMAT_RGBA8, piece_bytes)
 		var tex := ImageTexture.create_from_image(piece)
 		var bm := BitMap.new()
 		bm.create_from_image_alpha(piece, 0.12)
@@ -479,140 +538,103 @@ func _shatter() -> void:
 			"uv_rect": Rect2(Vector2(x0, y0) * scale, Vector2(w, h) * scale),
 			"centroid": centroid * scale,
 		})
+	if DEBUG_PERF:
+		print("schulte shatter resize=%d mask=%d voronoi=%d crack=%d paint=%d" % [
+			t1 - t0, t2 - t1, t3 - t2, t4 - t3, Time.get_ticks_msec() - t4
+		])
 
 
-func _silhouette(src: Image) -> PackedByteArray:
-	var w := MASK_SIZE
-	var total := w * w
-	var wall := PackedByteArray()
-	wall.resize(total)
-	for y in range(w):
-		for x in range(w):
-			var c: Color = src.get_pixel(x, y)
-			var d := absf(c.r - BG.r) + absf(c.g - BG.g) + absf(c.b - BG.b)
-			wall[y * w + x] = 1 if d > 0.28 else 0
-	var dilated := PackedByteArray()
-	dilated.resize(total)
-	for y in range(w):
-		for x in range(w):
-			var on := 0
-			for oy in range(-1, 2):
-				for ox in range(-1, 2):
-					var nx := x + ox
-					var ny := y + oy
-					if nx < 0 or ny < 0 or nx >= w or ny >= w:
-						continue
-					if wall[ny * w + nx] == 1:
-						on = 1
-						break
-				if on == 1:
-					break
-			dilated[y * w + x] = on
-	var exterior := PackedByteArray()
-	exterior.resize(total)
-	var q: Array[int] = []
-	for x in range(w):
-		_try_flood(dilated, exterior, q, x, 0)
-		_try_flood(dilated, exterior, q, x, w - 1)
-	for y in range(w):
-		_try_flood(dilated, exterior, q, 0, y)
-		_try_flood(dilated, exterior, q, w - 1, y)
-	var head := 0
-	while head < q.size():
-		var i: int = q[head]
-		head += 1
-		var x := i % w
-		var y := int(i / w)
-		_try_flood(dilated, exterior, q, x - 1, y)
-		_try_flood(dilated, exterior, q, x + 1, y)
-		_try_flood(dilated, exterior, q, x, y - 1)
-		_try_flood(dilated, exterior, q, x, y + 1)
+func _alpha_mask(src: Image) -> PackedByteArray:
+	var data: PackedByteArray = src.get_data()
+	var total := MASK_SIZE * MASK_SIZE
 	var inside := PackedByteArray()
 	inside.resize(total)
+	var p := 3
 	for i in range(total):
-		inside[i] = 0 if exterior[i] == 1 else 1
+		inside[i] = 1 if data[p] > 10 else 0
+		p += 4
 	return inside
 
 
-func _try_flood(wall: PackedByteArray, exterior: PackedByteArray, q: Array[int], x: int, y: int) -> void:
-	if x < 0 or y < 0 or x >= MASK_SIZE or y >= MASK_SIZE:
-		return
-	var i := y * MASK_SIZE + x
-	if wall[i] == 1 or exterior[i] == 1:
-		return
-	exterior[i] = 1
-	q.append(i)
+func _mask_center(inside: PackedByteArray) -> Vector2:
+	var sx := 0
+	var sy := 0
+	var n := 0
+	for y in range(MASK_SIZE):
+		for x in range(MASK_SIZE):
+			if inside[y * MASK_SIZE + x] == 0:
+				continue
+			sx += x
+			sy += y
+			n += 1
+	if n == 0:
+		return Vector2(MASK_SIZE * 0.5, MASK_SIZE * 0.5)
+	return Vector2(float(sx) / float(n), float(sy) / float(n))
 
 
-func _place_sites(inside: PackedByteArray, n: int) -> PackedVector2Array:
+func _place_sites(inside: PackedByteArray, n: int, center: Vector2) -> PackedVector2Array:
 	var sites := PackedVector2Array()
 	sites.resize(n * n)
 	for row in range(n):
 		for col in range(n):
 			var gx := (col + 0.5 + randf_range(-0.18, 0.18)) / float(n) * MASK_SIZE
 			var gy := (row + 0.5 + randf_range(-0.18, 0.18)) / float(n) * MASK_SIZE
-			var p := _nearest_inside(inside, Vector2(gx, gy))
-			sites[row * n + col] = p
+			sites[row * n + col] = _nearest_inside(inside, Vector2(gx, gy), center)
 	return sites
 
 
-func _nearest_inside(inside: PackedByteArray, p: Vector2) -> Vector2:
-	var x0 := clampi(int(p.x), 0, MASK_SIZE - 1)
-	var y0 := clampi(int(p.y), 0, MASK_SIZE - 1)
-	if inside[y0 * MASK_SIZE + x0] == 1:
-		return Vector2(x0, y0)
-	for r in range(1, MASK_SIZE):
-		for oy in range(-r, r + 1):
-			for ox in range(-r, r + 1):
-				if maxi(absi(ox), absi(oy)) != r:
-					continue
-				var x := x0 + ox
-				var y := y0 + oy
-				if x < 0 or y < 0 or x >= MASK_SIZE or y >= MASK_SIZE:
-					continue
-				if inside[y * MASK_SIZE + x] == 1:
-					return Vector2(x, y)
-	return Vector2(MASK_SIZE * 0.5, MASK_SIZE * 0.5)
+func _nearest_inside(inside: PackedByteArray, p: Vector2, center: Vector2) -> Vector2:
+	var x := clampi(int(p.x), 0, MASK_SIZE - 1)
+	var y := clampi(int(p.y), 0, MASK_SIZE - 1)
+	if inside[y * MASK_SIZE + x] == 1:
+		return Vector2(x, y)
+	var cx := int(center.x)
+	var cy := int(center.y)
+	for _s in range(MASK_SIZE):
+		if x != cx:
+			x += 1 if cx > x else -1
+		if y != cy:
+			y += 1 if cy > y else -1
+		if inside[y * MASK_SIZE + x] == 1:
+			return Vector2(x, y)
+		if x == cx and y == cy:
+			break
+	return center
 
 
-func _assign_voronoi(inside: PackedByteArray, sites: PackedVector2Array, labels: PackedInt32Array) -> void:
-	var count := sites.size()
+func _assign_voronoi(inside: PackedByteArray, sites: PackedVector2Array, labels: PackedInt32Array, n: int) -> void:
+	var crack2 := CRACK * CRACK
 	for y in range(MASK_SIZE):
+		var row_guess := clampi(int(float(y) * float(n) / float(MASK_SIZE)), 0, n - 1)
 		for x in range(MASK_SIZE):
 			var idx := y * MASK_SIZE + x
 			if inside[idx] == 0:
 				labels[idx] = -1
 				continue
-			var best := 0
+			var col_guess := clampi(int(float(x) * float(n) / float(MASK_SIZE)), 0, n - 1)
+			var best := row_guess * n + col_guess
 			var best_d := INF
+			var second := INF
 			var px := float(x)
 			var py := float(y)
-			for i in range(count):
-				var d := _dist2(Vector2(px, py), sites[i])
-				if d < best_d:
-					best_d = d
-					best = i
-			labels[idx] = best
-
-
-func _lloyd(inside: PackedByteArray, sites: PackedVector2Array, labels: PackedInt32Array) -> void:
-	var count := sites.size()
-	var sums: Array[Vector2] = []
-	var area := PackedInt32Array()
-	area.resize(count)
-	sums.resize(count)
-	for i in range(count):
-		sums[i] = Vector2.ZERO
-	for y in range(MASK_SIZE):
-		for x in range(MASK_SIZE):
-			var lab := labels[y * MASK_SIZE + x]
-			if lab < 0:
-				continue
-			sums[lab] += Vector2(x, y)
-			area[lab] += 1
-	for i in range(count):
-		if area[i] > 0:
-			sites[i] = sums[i] / float(area[i])
+			for dr in range(-1, 2):
+				for dc in range(-1, 2):
+					var nr: int = row_guess + dr
+					var nc: int = col_guess + dc
+					if nr < 0 or nc < 0 or nr >= n or nc >= n:
+						continue
+					var i: int = nr * n + nc
+					var d := _dist2(Vector2(px, py), sites[i])
+					if d < best_d:
+						second = best_d
+						best_d = d
+						best = i
+					elif d < second:
+						second = d
+			if second - best_d < crack2:
+				labels[idx] = -1
+			else:
+				labels[idx] = best
 
 
 func _dist2(a: Vector2, b: Vector2) -> float:
