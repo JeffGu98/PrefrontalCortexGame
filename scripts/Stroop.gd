@@ -138,6 +138,8 @@ func _build_color_buttons() -> void:
 		btn.size = Vector2(btn_w, btn_h)
 		btn.pivot_offset = Vector2(btn_w, btn_h) * 0.5
 		btn.focus_mode = Control.FOCUS_NONE
+		btn.action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
+		btn.keep_pressed_outside = false
 		btn.add_theme_font_size_override("font_size", 44)
 		btn.add_theme_color_override("font_color", EASY_INK)
 		btn.pressed.connect(_on_button_pressed.bind(btn))
@@ -235,6 +237,37 @@ func _derange(n: int) -> Array[int]:
 	return idx
 
 
+func _paint_choice(btn: Button, bg: Color) -> void:
+	var box := _make_flat(bg)
+	btn.add_theme_stylebox_override("normal", box)
+	btn.add_theme_stylebox_override("hover", box)
+	btn.add_theme_stylebox_override("pressed", box)
+	btn.add_theme_stylebox_override("hover_pressed", box)
+	btn.add_theme_stylebox_override("focus", box)
+	btn.add_theme_stylebox_override("disabled", box)
+	btn.set_meta("idle_bg", bg)
+
+
+func _clear_choice_press(btn: Button) -> void:
+	btn.set_pressed_no_signal(false)
+	btn.release_focus()
+	btn.notification(Control.NOTIFICATION_MOUSE_EXIT)
+	btn.notification(Control.NOTIFICATION_MOUSE_EXIT_SELF)
+	btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg: Color = btn.get_meta("idle_bg", EASY_BG)
+	_paint_choice(btn, bg)
+	btn.modulate = Color.WHITE
+
+
+func _set_choices_clickable(on: bool) -> void:
+	for btn in color_buttons:
+		btn.set_pressed_no_signal(false)
+		btn.release_focus()
+		btn.notification(Control.NOTIFICATION_MOUSE_EXIT)
+		btn.notification(Control.NOTIFICATION_MOUSE_EXIT_SELF)
+		btn.mouse_filter = Control.MOUSE_FILTER_STOP if on else Control.MOUSE_FILTER_IGNORE
+
+
 func _refresh_choices() -> void:
 	var names: Array[int] = []
 	for i in range(COLORS.size()):
@@ -244,15 +277,14 @@ func _refresh_choices() -> void:
 	for i in range(color_buttons.size()):
 		var btn := color_buttons[i]
 		var name_idx: int = names[i]
-		btn.modulate = Color.WHITE
 		btn.scale = Vector2.ONE
-		btn.set_pressed_no_signal(false)
 		btn.text = COLORS[name_idx]["name"]
 		btn.add_theme_color_override("font_color", EASY_INK)
 		if easy_mode:
-			_style_button(btn, EASY_BG)
+			_paint_choice(btn, EASY_BG)
 		else:
-			_style_button(btn, COLORS[bgs[name_idx]]["color"])
+			_paint_choice(btn, COLORS[bgs[name_idx]]["color"])
+	_set_choices_clickable(true)
 
 
 func _new_trial() -> void:
@@ -284,6 +316,7 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 	if game_over or waiting or phase != Phase.PLAY:
 		return
 	waiting = true
+	_set_choices_clickable(false)
 	_press_bounce(btn)
 	if color_name == correct_color:
 		streak += 1
@@ -324,12 +357,11 @@ func _begin_gap() -> void:
 
 
 func _press_bounce(btn: Button) -> void:
-	btn.release_focus()
-	btn.set_pressed_no_signal(false)
+	_clear_choice_press(btn)
 	btn.pivot_offset = btn.size * 0.5
-	btn.scale = Vector2(0.92, 0.92)
+	btn.scale = Vector2(0.88, 0.88)
 	var tw := create_tween()
-	tw.tween_property(btn, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(btn, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _flash_wrong(btn: Button) -> void:
