@@ -7,6 +7,10 @@ const MAX_SIZE := 7
 const BEST_PATH := "user://schulte_best.cfg"
 const ASSET_DIR := "res://assets/schulte/"
 const NAMES_PATH := "res://assets/schulte/names.cfg"
+const FALLBACK_PNGS := [
+	"cat.png", "dog.png", "fox.png", "panda.png", "elephant.png",
+	"owl.png", "tiger.png", "rabbit.png", "penguin.png", "deer.png",
+]
 const HUD_TOP := 156.0
 const SIDE_MARGIN := 28.0
 const BOTTOM_RESERVE := 108.0
@@ -186,17 +190,7 @@ func _load_animals() -> void:
 	if cfg.load(NAMES_PATH) == OK:
 		for key in cfg.get_section_keys("names"):
 			labels[String(key)] = str(cfg.get_value("names", key))
-	var files: Array[String] = []
-	var dir := DirAccess.open(ASSET_DIR)
-	if dir != null:
-		dir.list_dir_begin()
-		var fname := dir.get_next()
-		while fname != "":
-			if not dir.current_is_dir() and fname.get_extension().to_lower() == "png" and not fname.begins_with("_"):
-				files.append(fname)
-			fname = dir.get_next()
-		dir.list_dir_end()
-	files.sort()
+	var files := _list_animal_pngs()
 	for fname in files:
 		var id := fname.get_basename()
 		animals.append({
@@ -204,6 +198,56 @@ func _load_animals() -> void:
 			"name": str(labels.get(id, id)),
 			"path": ASSET_DIR + fname,
 		})
+
+
+func _list_animal_pngs() -> Array[String]:
+	var files: Array[String] = []
+	var seen := {}
+	var raw: Array[String] = []
+	for entry in ResourceLoader.list_directory(ASSET_DIR):
+		raw.append(String(entry))
+	var dir := DirAccess.open(ASSET_DIR)
+	if dir != null:
+		for entry in dir.get_files():
+			raw.append(String(entry))
+	for entry in raw:
+		var name := String(entry).trim_suffix("/")
+		if name.begins_with("_") or name.begins_with("."):
+			continue
+		if name.ends_with(".import"):
+			name = name.trim_suffix(".import")
+		if name.get_extension().to_lower() != "png":
+			continue
+		if seen.has(name):
+			continue
+		seen[name] = true
+		files.append(name)
+	files.sort()
+	if files.is_empty():
+		for fname in FALLBACK_PNGS:
+			files.append(String(fname))
+	return files
+
+
+func _load_animal_image(path: String) -> Image:
+	var img := Image.new()
+	if FileAccess.file_exists(path):
+		var buf := FileAccess.get_file_as_bytes(path)
+		if buf.size() > 8 and img.load_png_from_buffer(buf) == OK:
+			img.convert(Image.FORMAT_RGBA8)
+			return img
+	if img.load(path) == OK:
+		img.convert(Image.FORMAT_RGBA8)
+		return img
+	var tex := ResourceLoader.load(path) as Texture2D
+	if tex != null:
+		var from_tex := tex.get_image()
+		if from_tex == null:
+			from_tex = RenderingServer.texture_2d_get(tex.get_rid())
+		if from_tex != null:
+			from_tex.convert(Image.FORMAT_RGBA8)
+			return from_tex
+	return null
 
 
 func _pick_animal() -> void:
@@ -223,12 +267,9 @@ func _pick_animal() -> void:
 	animal_id = String(picked["id"])
 	animal_name = String(picked["name"])
 	last_animal_id = animal_id
-	var tex := load(String(picked["path"])) as Texture2D
-	if tex != null:
-		var img := tex.get_image()
-		if img != null:
-			animal_img = img
-			animal_img.convert(Image.FORMAT_RGBA8)
+	var loaded := _load_animal_image(String(picked["path"]))
+	if loaded != null:
+		animal_img = loaded
 
 
 func _start_new() -> void:
