@@ -4,14 +4,14 @@ extends "res://scripts/GameBase.gd"
 
 const LIVES := 3
 const READY_TIME := 1.0
-const GAP_MIN := 0.55
-const GAP_MAX := 0.9
+const GAP_MIN := 0.35
+const GAP_MAX := 0.55
 const FEEDBACK_TIME := 0.45
-const TRAVEL_MIN := 1.2
+const TRAVEL_MIN := 1.0
 const TRAVEL_MAX := 2.0
 const STOP_RATIO := 0.5
 const STOP_AT_MIN := 0.4
-const STOP_AT_MAX := 0.7
+const STOP_AT_MAX := 0.68
 const STOP_HOLD := 0.5
 const GO_WINDOW := 0.72
 const MAX_GO_STREAK := 2
@@ -52,7 +52,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "红灯停"
-	help_text = "小车从左开向右边的终点线。等到车靠近终点的绿线再冲，一开始点没有用。\n大多数时候要冲过去。若中途突然亮红灯，必须立刻停手。\n冲过终点得 10 分；红灯亮后忍住得 20 分。红灯时还冲、或绿灯没冲，都扣命。"
+	help_text = "小车从左开向右边的终点线。等到车靠近终点的绿线再冲，一开始点没有用。\n大约一半轮次会突然亮红灯，亮了必须立刻停手。连对时车开得更快、红灯更晚。\n冲过终点得 10 分；红灯亮后忍住得 20 分。红灯时还冲、或绿灯没冲，都扣命。"
 
 
 func _build_game() -> void:
@@ -196,6 +196,7 @@ func _begin_gap() -> void:
 	red_on = false
 	progress = 0.0
 	car.fill = Color("#8ab4ff")
+	car.modulate = Color.WHITE
 	car.queue_redraw()
 	car.position.x = 16.0
 	_set_light(false)
@@ -207,8 +208,12 @@ func _begin_drive() -> void:
 	if phase == Phase.OVER:
 		return
 	_pick_trial()
-	travel_time = randf_range(TRAVEL_MIN, TRAVEL_MAX)
-	stop_at = randf_range(STOP_AT_MIN, STOP_AT_MAX)
+	var ramp := clampf(float(streak) / 12.0, 0.0, 1.0)
+	travel_time = clampf(lerpf(TRAVEL_MAX, TRAVEL_MIN, ramp) + randf_range(-0.06, 0.06), TRAVEL_MIN, TRAVEL_MAX)
+	# 连对时红灯更靠近绿线（更晚亮），仍严格低于 GO_WINDOW
+	var stop_lo := lerpf(STOP_AT_MIN, 0.55, ramp)
+	var stop_hi := lerpf(0.58, STOP_AT_MAX, ramp)
+	stop_at = randf_range(stop_lo, minf(stop_hi, GO_WINDOW - 0.04))
 	drive_elapsed = 0.0
 	red_elapsed = 0.0
 	red_on = false
@@ -289,8 +294,11 @@ func _succeed(points: int, reason: String) -> void:
 		progress = clampf(progress, 0.0, 0.92)
 		car.fill = Color("#ffd75d")
 	else:
-		progress = 1.0
+		progress = 1.05
 		car.fill = Color("#4ade80")
+		car.modulate = Color(1.35, 1.35, 1.35)
+		var twg := create_tween()
+		twg.tween_property(car, "modulate", Color.WHITE, 0.28)
 	car.queue_redraw()
 	_place_car()
 	_set_hint("%s  +%d" % [reason, points], Color("#4ade80"))
@@ -309,9 +317,13 @@ func _miss(reason: String) -> void:
 	car.queue_redraw()
 	var origin_x := car.position.x
 	var tw := create_tween()
-	tw.tween_property(car, "position:x", origin_x + 10.0, 0.05)
-	tw.tween_property(car, "position:x", origin_x - 10.0, 0.05)
+	tw.tween_property(car, "position:x", origin_x + 14.0, 0.05)
+	tw.tween_property(car, "position:x", origin_x - 14.0, 0.05)
 	tw.tween_property(car, "position:x", origin_x, 0.05)
+	if red_on and light != null:
+		light.modulate = Color(2.0, 1.2, 1.2)
+		var twl := create_tween()
+		twl.tween_property(light, "modulate", Color.WHITE, 0.35)
 	_set_hint(reason, Color("#ff5d73"))
 	_burst_feedback(reason, Color("#ff5d73"))
 	_update_hud()
