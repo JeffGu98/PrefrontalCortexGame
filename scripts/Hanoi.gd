@@ -6,6 +6,8 @@ const MIN_DISKS := 3
 const MAX_DISKS := 6
 const BASE := 30
 const OPTIMAL_BONUS := 50
+## 步数超过最优 × 此倍数：不算过关，必须复位。
+const OVER_FACTOR := 1.5
 const BEST_PATH := "user://hanoi_best.cfg"
 const PEGS := 3
 const DISK_COLORS := [
@@ -16,6 +18,7 @@ const DISK_COLORS := [
 	Color("#5d9bff"),
 	Color("#c084fc"),
 ]
+const PEG_NAMES := ["左", "中", "右"]
 
 enum Phase { PICK, PLAY, WON, OVER }
 
@@ -30,6 +33,8 @@ var selected := -1
 var animating := false
 var pegs: Array = []
 var disk_nodes: Dictionary = {}
+## True after over-limit clear attempt until player resets.
+var must_reset := false
 
 var score_label: Label
 var status_label: Label
@@ -42,7 +47,7 @@ var reset_btn: Button
 
 func _init() -> void:
 	title_text = "汉诺塔"
-	help_text = "三根柱子。开始时盘子都在左边，要全部移到右边。\n点一下选出顶上的盘，再点目标柱放下。大盘不能压小盘。乱了可以点「复位」，盘子回左柱，本关步数清零，总分保留。\n做到哪一关会记住。再进时选继续最新一关，或从 3 盘重来。\n最优步数是 2^N−1。最优通关会加盘；步数太多仍可通过，但标成非最优。练的是计划，不是速度。"
+	help_text = "三根柱子。开始时盘子都在左边，要全部移到右边。\n点一下选出顶上的盘，再点目标柱放下。大盘不能压小盘。乱了可以点「复位」，盘子回左柱，本关步数清零，总分保留。\n做到哪一关会记住。再进时选继续最新一关，或从 3 盘重来。\n最优步数是 2^N−1。只有最优通关才加盘；步数超过最优×1.5 不算过关，必须复位重来。过关后会展示最优路径。练的是计划，不是速度——没有倒计时。"
 
 
 func _build_game() -> void:
@@ -76,7 +81,8 @@ func _build_hud() -> void:
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	hint_label.offset_top = 128
-	hint_label.offset_bottom = 156
+	hint_label.offset_bottom = 188
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint_label)
 
 
@@ -118,8 +124,8 @@ func _layout_board() -> void:
 	var vp := get_viewport_rect().size
 	reset_btn.position = Vector2((vp.x - 220.0) / 2.0, vp.y - 36.0 - 56.0)
 	reset_btn.size = Vector2(220, 56)
-	board.position = Vector2(20, 170)
-	board.size = Vector2(vp.x - 40.0, reset_btn.position.y - 186.0)
+	board.position = Vector2(20, 196)
+	board.size = Vector2(vp.x - 40.0, reset_btn.position.y - 212.0)
 	var col_w := board.size.x / PEGS
 	for i in range(PEGS):
 		peg_hits[i].position = Vector2(col_w * i, 0)
@@ -183,6 +189,7 @@ func _start_level() -> void:
 	elapsed = 0.0
 	selected = -1
 	animating = false
+	must_reset = false
 	pegs = [[], [], []]
 	for size in range(disk_n, 0, -1):
 		pegs[0].append(size)
@@ -209,12 +216,17 @@ func _start_level() -> void:
 	if reset_btn != null:
 		reset_btn.visible = true
 		reset_btn.modulate = Color.WHITE
+		reset_btn.text = "复位"
 	_remember_level()
 
 
 func _reset_board() -> void:
-	if phase != Phase.PLAY:
+	if phase != Phase.PLAY and not must_reset:
 		return
+	if phase == Phase.WON:
+		return
+	must_reset = false
+	phase = Phase.PLAY
 	selected = -1
 	animating = false
 	moves = 0
@@ -226,6 +238,9 @@ func _reset_board() -> void:
 	_set_hint("已复位 · 盘子回到左柱", Color("#8ab4ff"))
 	_update_hud()
 	board.queue_redraw()
+	if reset_btn != null:
+		reset_btn.modulate = Color.WHITE
+		reset_btn.text = "复位"
 
 
 func _layout_disks(animate: bool) -> void:
@@ -252,6 +267,9 @@ func _layout_disks(animate: bool) -> void:
 
 
 func _on_peg_pressed(peg: int) -> void:
+	if must_reset:
+		_set_hint("步数超限 · 请点「复位」重来", Color("#ff5d73"))
+		return
 	if phase != Phase.PLAY or animating:
 		return
 	if selected < 0:
@@ -306,32 +324,56 @@ func _shake_disk(size: int) -> void:
 	tw.tween_property(disk, "position:x", x, 0.05)
 
 
+func _move_limit() -> int:
+	return int(ceil(float(_optimal()) * OVER_FACTOR))
+
+
 func _check_win() -> void:
 	if pegs[2].size() < disk_n:
+		# Soft warn when already over limit mid-solve.
+		if moves > _move_limit():
+			_set_hint("已超最优×1.5 · 过不了关，建议复位", Color("#ffb35d"))
+		return
+	var optimal := _optimal()
+	var limit := _move_limit()
+	if moves > limit:
+		# Cheese blocked: disks are on the right but not a clear.
+		must_reset = true
+		selected = -1
+		_set_hint("步数 %d > 最优×1.5（%d）· 不算过关，请复位重来" % [moves, limit], Color("#ff5d73"))
+		_burst_feedback("超步数", Color("#ff5d73"))
+		_update_hud()
+		if reset_btn != null:
+			reset_btn.modulate = Color("#ff5d73")
+			reset_btn.text = "复位重来"
 		return
 	phase = Phase.WON
-	var optimal := (1 << disk_n) - 1
-	var limit := int(ceil(float(optimal) * 1.5))
-	var gained := disk_n * BASE
+	var cleared_n := disk_n
+	var gained := cleared_n * BASE
 	var extra := ""
+	var path_text := ""
 	if moves <= optimal:
-		gained += disk_n * OPTIMAL_BONUS
+		gained += cleared_n * OPTIMAL_BONUS
 		extra = " · 最优"
+		path_text = _format_optimal_path(cleared_n)
 		if disk_n < MAX_DISKS:
 			disk_n += 1
 			extra += " · 下一关加盘"
 			_remember_level()
-	elif moves <= limit:
-		extra = " · 非最优，仍通过"
 	else:
-		extra = " · 步数偏多，仍通过"
+		# Within 1.5× but not optimal: clear this level, no disk bump.
+		extra = " · 非最优，本关通过（不加盘）"
+		path_text = _format_optimal_path(cleared_n)
 	score += gained
 	var is_best := score > best_score
 	if is_best:
 		best_score = score
 		_save_progress()
 	var tone := Color("#4ade80") if moves <= optimal else Color("#ffd75d")
-	_set_hint("过关 +%d%s" % [gained, extra], tone)
+	var hint := "过关 +%d%s" % [gained, extra]
+	if path_text != "":
+		hint += "\n最优路径：" + path_text
+	_set_hint(hint, tone)
 	_burst_feedback("过关 +%d" % gained, tone)
 	_update_hud()
 	if reset_btn != null:
@@ -341,8 +383,33 @@ func _check_win() -> void:
 		restart_button.text = "下一关"
 
 
+func _format_optimal_path(n: int) -> String:
+	var steps: Array = []
+	_solve_hanoi(n, 0, 2, 1, steps)
+	var parts: PackedStringArray = []
+	var show_n := mini(steps.size(), 15)
+	for i in range(show_n):
+		var mv: Array = steps[i]
+		parts.append("%s→%s" % [PEG_NAMES[mv[0]], PEG_NAMES[mv[1]]])
+	var s := "、".join(parts)
+	if steps.size() > show_n:
+		s += "…"
+	return s
+
+
 func _optimal() -> int:
 	return (1 << disk_n) - 1
+
+
+func _solve_hanoi(n: int, src: int, dst: int, aux: int, out: Array) -> void:
+	if n <= 0:
+		return
+	if n == 1:
+		out.append([src, dst])
+		return
+	_solve_hanoi(n - 1, src, aux, dst, out)
+	out.append([src, dst])
+	_solve_hanoi(n - 1, aux, dst, src, out)
 
 
 func _process(delta: float) -> void:
@@ -356,7 +423,10 @@ func _update_hud() -> void:
 	if phase == Phase.PICK:
 		status_label.text = "上次做到 %d 盘" % latest_disks
 	else:
-		status_label.text = "%d 盘　步数 %d／最优 %d　用时 %.0f 秒" % [disk_n, moves, _optimal(), elapsed]
+		var lim := _move_limit()
+		status_label.text = "%d 盘　步数 %d／最优 %d（上限 %d）　用时 %.0f 秒" % [
+			disk_n, moves, _optimal(), lim, elapsed
+		]
 
 
 func _set_hint(text: String, color: Color) -> void:
