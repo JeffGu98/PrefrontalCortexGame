@@ -18,6 +18,7 @@ const GAMES := [
 	{"title": "中间箭头", "func": "抑制控制 · 侧翼", "group": "抑制控制", "scene": "res://scenes/Flanker.tscn", "built": true},
 	{"title": "舒尔特方格", "func": "专注 · 视觉搜索", "group": "注意", "scene": "res://scenes/Schulte.tscn", "built": true},
 	{"title": "追踪异色球", "func": "注意 · 追踪", "group": "注意", "scene": "res://scenes/Track.tscn", "built": true},
+	{"title": "线索靶", "func": "注意 · 语境维持", "group": "注意", "scene": "res://scenes/AxCpt.tscn", "built": true},
 	{"title": "N-Back", "func": "工作记忆 · 更新", "group": "工作记忆", "scene": "res://scenes/NBack.tscn", "built": true},
 	{"title": "积木跨度", "func": "工作记忆 · 空间序列", "group": "工作记忆", "scene": "res://scenes/Corsi.tscn", "built": true},
 	{"title": "看点数", "func": "工作记忆 · 瞬时", "group": "工作记忆", "scene": "res://scenes/Dots.tscn", "built": true},
