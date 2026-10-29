@@ -20,7 +20,8 @@ const GAMES := [
 	{"title": "N-Back", "func": "工作记忆 · 更新", "group": "工作记忆", "scene": "res://scenes/NBack.tscn", "built": true},
 	{"title": "积木跨度", "func": "工作记忆 · 空间序列", "group": "工作记忆", "scene": "res://scenes/Corsi.tscn", "built": true},
 	{"title": "看点数", "func": "工作记忆 · 瞬时", "group": "工作记忆", "scene": "res://scenes/Dots.tscn", "built": true},
-	{"title": "任务切换", "func": "认知灵活性", "group": "认知灵活性", "scene": "res://scenes/Switch.tscn", "built": true},
+	{"title": "任务切换", "func": "认知灵活性 · 线索切换", "group": "认知灵活性", "scene": "res://scenes/Switch.tscn", "built": true},
+	{"title": "规则变了", "func": "认知灵活性 · 规则推断", "group": "认知灵活性", "scene": "res://scenes/RuleShift.tscn", "built": true},
 	{"title": "汉诺塔", "func": "计划 · 前瞻", "group": "计划", "scene": "res://scenes/Hanoi.tscn", "built": true},
 ]
 
