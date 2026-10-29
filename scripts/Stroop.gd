@@ -10,6 +10,8 @@ const COLORS := [
 ]
 
 const LIVES := 3
+## 点错/超时扣分，避免速度分诱导乱点。
+const SCORE_MISS := 10
 const TIME_START := 2.5
 const TIME_MIN := 0.9
 const TIME_STEP := 0.08
@@ -57,7 +59,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "反向色字"
-	help_text = "中央是有颜色的字。多数时候字义和字体颜色不同，偶有相同。点下面写着「字体颜色」的按钮。\n简单：选项灰底黑字，位置每题仍会变。困难：选项底色是干扰，不要对色块。\n每题从 2.5 秒起，连对会加快（约每 4 连 −0.08 秒，下限约 0.9 秒）；点错略放慢。超时或点错扣一命。"
+	help_text = "中央是有颜色的字。多数时候字义和字体颜色不同，偶有相同。点下面写着「字体颜色」的按钮。\n简单：选项灰底黑字，位置每题仍会变。困难：选项底色是干扰，不要对色块。\n每题从 2.5 秒起，连对会加快（约每 4 连 −0.08 秒，下限约 0.9 秒）；点错略放慢。超时或点错扣一命并 −10 分。"
 
 
 func _build_game() -> void:
@@ -358,9 +360,11 @@ func _apply_miss(reason: String) -> void:
 	streak = 0
 	trial_limit = minf(TIME_START, trial_limit + TIME_RECOVER)
 	lives -= 1
-	_set_hint(reason, Color("#ff5d73"))
+	score = maxi(0, score - SCORE_MISS)
+	var miss_text := "%s · −%d" % [reason, SCORE_MISS]
+	_set_hint(miss_text, Color("#ff5d73"))
 	if trial_limit > BURST_CUTOFF:
-		_burst_feedback(reason, Color("#ff5d73"))
+		_burst_feedback(miss_text, Color("#ff5d73"))
 	_update_hud()
 	if lives <= 0:
 		_end_game()

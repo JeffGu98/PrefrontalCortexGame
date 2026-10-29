@@ -49,7 +49,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "任务切换"
-	help_text = "中央出现 1–9 的数字（没有 5）。上方色块是当前规则：蓝=奇偶，橙=大于/小于 5。\n按规则点对应按钮。规则会不时切换；切对了分更高。\n每题开局约 1.6 秒，连对会更快；点错或超时扣命。"
+	help_text = "中央出现 1–9 的数字（没有 5）。上方色块是当前规则：蓝=奇偶，橙=大于/小于 5。\n按规则点对应按钮。规则会不时切换；切对了分更高。顶部会提示距下次切换还有几题。\n每题开局约 1.6 秒，连对会更快；点错或超时扣命。"
 
 
 func _build_game() -> void:
@@ -344,7 +344,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _update_hud() -> void:
 	score_label.text = "得分 %d　连击 %d" % [score, streak]
-	lives_label.text = "生命 %d/%d" % [lives, LIVES]
+	if phase == Phase.READY:
+		lives_label.text = "生命 %d/%d" % [lives, LIVES]
+	elif phase == Phase.OVER:
+		lives_label.text = "生命 %d/%d" % [lives, LIVES]
+	else:
+		# stay_left = 本题起本规则还剩几题（含本题）；下题切则显示 1。
+		lives_label.text = "生命 %d/%d · 距切换 %d 题" % [lives, LIVES, maxi(stay_left, 1)]
 	var play := phase == Phase.PLAY and not waiting
 	var ready := phase == Phase.READY
 	if left_btn != null:
