@@ -6,10 +6,13 @@ const LIVES := 3
 const START_BALLS := 6
 const MAX_BALLS := 12
 const HIGHLIGHT_TIME := 1.5
+const HIGHLIGHT_MIN := 0.9
 const MOVE_MIN := 4.0
 const MOVE_MAX := 8.0
+const PICK_TIME := 3.0
 const SCORE_ALL := 20
 const BEST_PATH := "user://track_best.cfg"
+const MAX_ODD := 5
 const SAME := Color("#8ab4ff")
 const ODD := Color("#ffd75d")
 const PICK := Color("#4ade80")
@@ -26,6 +29,7 @@ var streak := 0
 var best_score := 0
 var ball_count := START_BALLS
 var latest_balls := START_BALLS
+var beyond_cap := 0
 var odd_count := 1
 var positions: Array[Vector2] = []
 var velocities: Array[Vector2] = []
@@ -44,7 +48,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "追踪异色球"
-	help_text = "开始时若干球里会有 1–3 个黄色异色球，先记住。\n随后全部变成蓝色并乱动，停下后把刚才那些异色球点出来，再按确定。\n全对 +20 并加一个球；点错或漏选扣一命。\n做到哪一档会记住。再进时选继续最新一关，或从 6 个球重来。"
+	help_text = "开始时若干球里会有黄色异色球，先记住。\n随后全部变成蓝色并乱动，停下后在约 3 秒内点出异色球再按确定。\n全对 +20 并加球；满 12 球后改为更多异色或更小的球，不再加长移动。点错、漏选或超时扣一命。\n做到哪一档会记住。再进时选继续最新一关，或从 6 个球重来。"
 
 
 func _build_game() -> void:
@@ -159,6 +163,7 @@ func _start_round() -> void:
 	score = 0
 	lives = LIVES
 	streak = 0
+	beyond_cap = 0
 	odd_count = 1
 	phase = Phase.READY
 	phase_left = 1.0
@@ -179,9 +184,10 @@ func _begin_highlight() -> void:
 	if phase == Phase.OVER:
 		return
 	odd_count = 1 if ball_count <= 7 else (2 if ball_count <= 10 else 3)
+	odd_count = mini(mini(odd_count + beyond_cap, MAX_ODD), maxi(ball_count - 1, 1))
 	_spawn_balls()
 	phase = Phase.HIGHLIGHT
-	phase_left = HIGHLIGHT_TIME
+	phase_left = maxf(HIGHLIGHT_MIN, HIGHLIGHT_TIME - (ball_count - START_BALLS) * 0.05 - beyond_cap * 0.08)
 	pulse = 0.0
 	picked.clear()
 	_set_hint("记住黄色的 %d 个" % odd_count, Color("#ffd75d"))
@@ -195,7 +201,7 @@ func _spawn_balls() -> void:
 	targets.clear()
 	radii.clear()
 	var area := canvas.size
-	var r := clampf(22.0 - (ball_count - 6) * 0.8, 16.0, 22.0)
+	var r := clampf(22.0 - (ball_count - 6) * 0.8 - beyond_cap * 1.2, 12.0, 22.0)
 	for i in range(ball_count):
 		radii.append(r)
 		var p := Vector2(r + 8.0 + randf() * maxf(area.x - r * 2.0 - 16.0, r), r + 8.0 + randf() * maxf(area.y - r * 2.0 - 16.0, r))
@@ -217,17 +223,19 @@ func _launch_angle() -> float:
 
 func _begin_move() -> void:
 	phase = Phase.MOVE
-	var base := clampf(MOVE_MIN + (ball_count - START_BALLS) * 0.5, MOVE_MIN, MOVE_MAX)
-	var factor := maxi(ceili((15.0 - float(ball_count)) / 2.0), 1)
-	phase_left = base * float(factor)
+	var balls_for_time := mini(ball_count, MAX_BALLS)
+	var base := clampf(MOVE_MIN + (balls_for_time - START_BALLS) * 0.5, MOVE_MIN, MOVE_MAX)
+	var factor := maxi(ceili((15.0 - float(balls_for_time)) / 2.0), 1)
+	phase_left = base * float(factor)  # 满 12 后不再加长移动
 	_set_hint("盯住它们", Color("#7f8ba6"))
 	_update_hud()
 
 
 func _begin_pick() -> void:
 	phase = Phase.PICK
+	phase_left = PICK_TIME
 	picked.clear()
-	_set_hint("点出刚才的异色球，再确定", Color("#8ab4ff"))
+	_set_hint("点出异色球 · %.0f 秒" % phase_left, Color("#8ab4ff"))
 	_update_hud()
 	canvas.queue_redraw()
 
@@ -276,6 +284,9 @@ func _confirm() -> void:
 		if ball_count < MAX_BALLS:
 			ball_count += 1
 			_remember_level()
+		else:
+			beyond_cap += 1
+			_remember_level()
 		_set_hint("全对  +%d" % SCORE_ALL, Color("#4ade80"))
 		_burst_feedback("全对  +%d" % SCORE_ALL, Color("#4ade80"))
 	else:
@@ -298,6 +309,18 @@ func _process(delta: float) -> void:
 		phase_left -= delta
 		if phase_left <= 0.0:
 			_begin_pick()
+		canvas.queue_redraw()
+		return
+	if phase == Phase.PICK:
+		phase_left -= delta
+		if phase_left <= 0.0:
+			_set_hint("超时", Color("#ff5d73"))
+			# 当作漏选：清空已选后走确认失败逻辑
+			picked.clear()
+			_confirm()
+			return
+		_set_hint("点出异色球 · %.1f 秒" % maxf(phase_left, 0.0), Color("#8ab4ff"))
+		_update_hud()
 		canvas.queue_redraw()
 		return
 	if phase == Phase.HIGHLIGHT:
@@ -356,7 +379,10 @@ func _step_move(delta: float) -> void:
 
 
 func _update_hud() -> void:
-	score_label.text = "得分 %d　连击 %d　球 %d" % [score, streak, ball_count]
+	if beyond_cap > 0:
+		score_label.text = "得分 %d　连击 %d　球 %d＋%d" % [score, streak, ball_count, beyond_cap]
+	else:
+		score_label.text = "得分 %d　连击 %d　球 %d" % [score, streak, ball_count]
 	if phase == Phase.GATE:
 		lives_label.add_theme_color_override("font_color", Color("#8ab4ff"))
 		lives_label.text = "上次做到 %d 个球" % latest_balls

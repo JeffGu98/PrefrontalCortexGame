@@ -7,24 +7,25 @@ const CELL_COUNT := GRID * GRID
 const START_N := 2
 const MIN_N := 2
 const MAX_N := 4
-const SOA := 2.5
-const STIM_TIME := 0.9
+const SOA := 1.8
+const STIM_TIME := 0.8
 const MATCH_RATIO := 0.3
-const UP_STREAK := 10
+const UP_STREAK := 6
 const DOWN_STREAK := 3
 const SCORE_HIT := 10
-const LIVES := 3
+const TRIAL_LIMIT := 45
 const READY_TIME := 1.0
 const BEST_PATH := "user://nback_best.cfg"
 const LIT := Color("#8ab4ff")
 const DIM := Color("#1a2740")
+const OK_CELL := Color("#4ade80")
+const BAD_CELL := Color("#ff5d73")
 
 enum Phase { READY, PLAY, OVER }
 
 var phase := Phase.READY
 var phase_left := 0.0
 var score := 0
-var lives := LIVES
 var streak := 0
 var wrong_streak := 0
 var best_score := 0
@@ -35,6 +36,8 @@ var stim_elapsed := 0.0
 var showing := false
 var answered := false
 var is_match := false
+var scoring_done := 0
+var miss_count := 0
 
 var score_label: Label
 var lives_label: Label
@@ -55,7 +58,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "N-Back"
-	help_text = "3×3 格子会依次亮起一个位置。开局会告诉你当前是几-Back。\n2-Back 就是：现在亮的格子，要不要和往前第 2 个相同。前 2 个只看不点。\n之后点「相同」或「不同」。答对 +10，答错或超时扣命。连对 10 次升 N，连错 3 次降 N。"
+	help_text = "3×3 格子会依次亮起一个位置。开局会告诉你当前是几-Back。\n2-Back 就是：现在亮的格子，要不要和往前第 2 个相同。前 2 个只看不点。\n之后点「相同」或「不同」。答对 +10；一局固定 45 题。连对 6 次升 N，连错 3 次降 N。对错会标在刚亮的格子上。"
 
 
 func _build_game() -> void:
@@ -222,9 +225,10 @@ func _layout_board() -> void:
 
 func _start_round() -> void:
 	score = 0
-	lives = LIVES
 	streak = 0
 	wrong_streak = 0
+	scoring_done = 0
+	miss_count = 0
 	n_level = START_N
 	history.clear()
 	phase = Phase.READY
@@ -310,6 +314,9 @@ func _hit() -> void:
 	streak += 1
 	wrong_streak = 0
 	score += SCORE_HIT
+	scoring_done += 1
+	_paint_cell(cells[current_pos], OK_CELL)
+	cells[current_pos].modulate = Color.WHITE
 	_set_hint("对  +%d" % SCORE_HIT, Color("#4ade80"))
 	if streak >= UP_STREAK and n_level < MAX_N:
 		n_level += 1
@@ -317,23 +324,26 @@ func _hit() -> void:
 		wrong_streak = 0
 		_set_hint("现在要比往前第 %d 个" % n_level, Color("#ffd75d"))
 		_burst_feedback("升到 %d-Back\n记住往前第 %d 个" % [n_level, n_level], Color("#ffd75d"))
-	else:
-		_burst_feedback("+%d" % SCORE_HIT, Color("#4ade80"))
+	# 格子反馈优先；升阶仍用短提示
 	_update_hud()
+	if scoring_done >= TRIAL_LIMIT:
+		_end_game()
 
 
 func _miss(reason: String) -> void:
 	streak = 0
 	wrong_streak += 1
-	lives -= 1
+	miss_count += 1
+	scoring_done += 1
+	_paint_cell(cells[current_pos], BAD_CELL)
+	cells[current_pos].modulate = Color.WHITE
 	_set_hint(reason, Color("#ff5d73"))
-	_burst_feedback(reason, Color("#ff5d73"))
 	if n_level > MIN_N and wrong_streak >= DOWN_STREAK:
 		n_level -= 1
 		wrong_streak = 0
 		_set_hint("%s · 现在要比往前第 %d 个" % [reason, n_level], Color("#ffd75d"))
 	_update_hud()
-	if lives <= 0:
+	if scoring_done >= TRIAL_LIMIT:
 		_end_game()
 
 
@@ -390,10 +400,10 @@ func _paint_cell(cell: Panel, color: Color) -> void:
 
 func _update_hud() -> void:
 	score_label.text = "得分 %d　连击 %d" % [score, streak]
-	lives_label.text = "生命 %d/%d" % [lives, LIVES]
+	lives_label.text = "题 %d／%d　错 %d" % [scoring_done, TRIAL_LIMIT, miss_count]
 	n_label.text = "%d-Back　·　往前第 %d 个" % [n_level, n_level]
 	if phase == Phase.READY:
-		progress_label.text = "先记住往前第 %d 个格子" % n_level
+		progress_label.text = "一局 %d 题 · 先记住往前第 %d 个" % [TRIAL_LIMIT, n_level]
 	else:
 		progress_label.text = "升阶 %d／%d　连错降阶 %d／%d" % [streak, UP_STREAK, wrong_streak, DOWN_STREAK]
 	var scoring := phase == Phase.PLAY and _is_scoring() and not answered
