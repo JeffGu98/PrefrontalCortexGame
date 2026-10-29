@@ -5,6 +5,7 @@ extends Control
 const RELEASES_API := "https://api.github.com/repos/JeffGu98/PrefrontalCortexGame/releases/latest"
 const RELEASES_PAGE := "https://github.com/JeffGu98/PrefrontalCortexGame/releases/latest"
 const SEEN_PATH := "user://update_seen.cfg"
+const DAILY_PATH := "user://daily.cfg"
 
 var _scroll: ScrollContainer
 var _release_url := RELEASES_PAGE
@@ -84,6 +85,9 @@ func _build_list() -> void:
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(list)
 
+	list.add_child(_make_daily_card())
+	list.add_child(_make_spacer(6))
+
 	var last_group := ""
 	for game in GAMES:
 		var group: String = game["group"]
@@ -93,6 +97,122 @@ func _build_list() -> void:
 			list.add_child(_make_group_header(group))
 			last_group = group
 		list.add_child(_make_game_button(game))
+
+
+func _built_games() -> Array:
+	var out: Array = []
+	for game in GAMES:
+		if game["built"]:
+			out.append(game)
+	return out
+
+
+func _today_key() -> String:
+	var d := Time.get_datetime_dict_from_system()
+	return "%04d-%02d-%02d" % [int(d["year"]), int(d["month"]), int(d["day"])]
+
+
+func _daily_index(count: int) -> int:
+	if count <= 0:
+		return 0
+	var key := _today_key()
+	var h := 0
+	for i in range(key.length()):
+		h = (h * 31 + key.unicode_at(i)) & 0x7fffffff
+	# Stable mix so nearby dates do not always pick neighbors.
+	h = (h ^ (h >> 16)) & 0x7fffffff
+	return h % count
+
+
+func _daily_game() -> Dictionary:
+	var built := _built_games()
+	if built.is_empty():
+		return {}
+	return built[_daily_index(built.size())]
+
+
+func _daily_played_today() -> bool:
+	var config := ConfigFile.new()
+	if config.load(DAILY_PATH) != OK:
+		return false
+	return str(config.get_value("daily", "played_date", "")) == _today_key()
+
+
+func _mark_daily_played() -> void:
+	var config := ConfigFile.new()
+	config.load(DAILY_PATH)
+	config.set_value("daily", "played_date", _today_key())
+	config.save(DAILY_PATH)
+
+
+func _make_daily_card() -> Button:
+	var game: Dictionary = _daily_game()
+	var btn := Button.new()
+	btn.text = ""
+	btn.custom_minimum_size = Vector2(0, 108)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_style_button(btn, Color("#243552"))
+
+	var pad := MarginContainer.new()
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pad.add_theme_constant_override("margin_left", 20)
+	pad.add_theme_constant_override("margin_right", 18)
+	pad.add_theme_constant_override("margin_top", 14)
+	pad.add_theme_constant_override("margin_bottom", 14)
+	btn.add_child(pad)
+
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 4)
+	pad.add_child(col)
+
+	var head := HBoxContainer.new()
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_theme_constant_override("separation", 10)
+	col.add_child(head)
+
+	var badge := Label.new()
+	badge.text = "今日一练"
+	badge.add_theme_font_size_override("font_size", 15)
+	badge.add_theme_color_override("font_color", Color("#ffd75d"))
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(badge)
+
+	if _daily_played_today():
+		var done := Label.new()
+		done.text = "今日已练"
+		done.add_theme_font_size_override("font_size", 14)
+		done.add_theme_color_override("font_color", Color("#7f8ba6"))
+		done.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		head.add_child(done)
+
+	var title := Label.new()
+	title.text = str(game.get("title", "—"))
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color("#e8edff"))
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(title)
+
+	var func_label := Label.new()
+	func_label.text = str(game.get("func", ""))
+	func_label.add_theme_font_size_override("font_size", 15)
+	func_label.add_theme_color_override("font_color", Color("#8ab4ff"))
+	func_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(func_label)
+
+	if game.has("scene"):
+		btn.pressed.connect(_open_daily.bind(str(game["scene"])))
+	else:
+		btn.disabled = true
+	return btn
+
+
+func _open_daily(scene_path: String) -> void:
+	_mark_daily_played()
+	_open_game(scene_path)
 
 
 func _make_group_header(text: String) -> Label:
