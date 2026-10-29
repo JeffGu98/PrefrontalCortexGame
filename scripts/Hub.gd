@@ -102,6 +102,7 @@ func _build_list() -> void:
 
 
 func _built_games() -> Array:
+	# Daily pool = every built game in GAMES order (线索靶 / 末项记 / 规则变了 / … auto-join when built:true).
 	var out: Array = []
 	for game in GAMES:
 		if game["built"]:

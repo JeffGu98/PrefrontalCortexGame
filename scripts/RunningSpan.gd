@@ -49,7 +49,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "末项记"
-	help_text = "屏幕中间会一条条闪过数字（1–9）。整串看完后，只按顺序点出最后 N 个（从较早到较晚）。\n前面的要主动丢掉——这和积木跨度（整段复述）、N-Back（是否与 N 步前相同）都不一样。\n全对跨度 +1，点错 −1。一局约 60 秒。不承诺变聪明。"
+	help_text = "屏幕中间会一条条闪过数字（1–9）。整串看完后，只按顺序点出最后 N 个（从较早到较晚）。\n前面的要主动丢掉——这和积木跨度（整段复述）、N-Back（是否与 N 步前相同）都不一样。\n全对末项数 +1，点错 −1。一局约 60 秒。不承诺变聪明。"
 
 
 func _build_game() -> void:
@@ -267,7 +267,10 @@ func _build_stream() -> void:
 			guard += 1
 		stream.append(pick)
 		last = pick
-	target = stream.slice(stream.size() - span)
+	target.clear()
+	var start := stream.size() - span
+	for i in range(start, stream.size()):
+		target.append(stream[i])
 
 
 func _on_pad(digit: int) -> void:
