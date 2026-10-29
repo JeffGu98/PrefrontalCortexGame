@@ -3,7 +3,7 @@
 > 本文档是**本项目的产品与交接规格**。任何人接手开发，读完本文即可继续改代码。
 > 游戏设计通论（MDA、心流、技能原子、有意思的决定）另见 [game-design.md](game-design.md)。
 > 十关手感问题与逐关改进清单见 [improvements.md](improvements.md)。
-> 最后更新：2026-10-29（v1.5.0：新增线索靶 AX-CPT）
+> 最后更新：2026-10-29（v1.6.0：新增末项记 Running Span）
 
 ## 1. 项目定位与理念
 
@@ -11,7 +11,7 @@
 
 - 工作名：PrefrontalCortexGame（前额叶训练场）
 - 类型：移动端认知训练小游戏合集
-- 形态：一个 hub 首页 + 13 个独立小游戏，**用户自己选择玩什么**；Hub 顶部有「今日一练」轻入口（按日历日确定性挑一关）
+- 形态：一个 hub 首页 + 14 个独立小游戏，**用户自己选择玩什么**；Hub 顶部有「今日一练」轻入口（按日历日确定性挑一关）
 - 引擎：Godot 4.7+，纯 GDScript，无外部依赖，竖屏 720×1280 基准
 
 ### 核心理念（不可妥协）
@@ -42,7 +42,7 @@
 | --- | --- | --- |
 | 抑制控制 | Stroop、Go/No-Go、Stop-signal、Flanker | —— |
 | 注意 | 舒尔特方格、多目标追踪（MOT）、AX-CPT（语境维持） | 「专注力音乐」 |
-| 工作记忆 | N-Back、Corsi 积木跨度、瞬时计数（subitizing） | Dual N-Back（混装，不做） |
+| 工作记忆 | N-Back、Corsi 积木跨度、Running Span（末项更新）、瞬时计数（subitizing） | Dual N-Back（混装，不做） |
 | 认知灵活性 | 任务切换（有线索）、WCST 风格规则推断（无线索） | —— |
 | 计划 | 汉诺塔（Tower of Hanoi） | —— |
 
@@ -69,7 +69,8 @@ prefrontal-cortex-game/
 │   ├── Hanoi.tscn
 │   ├── Corsi.tscn
 │   ├── RuleShift.tscn
-│   └── AxCpt.tscn
+│   ├── AxCpt.tscn
+│   └── RunningSpan.tscn
 ├── scripts/
 │   ├── GameBase.gd   # 所有游戏继承的脚手架
 │   ├── Hub.gd        # GAMES 数组 = 游戏注册表
@@ -80,7 +81,7 @@ prefrontal-cortex-game/
 ### 架构决策
 
 - **场景文件只是壳。** .tscn 里只有 `Control` 根节点 + 脚本引用；所有 UI 节点在 `_ready()` 里用代码构建。这延续了同仓库 DodgeShotLab 的做法，避免编辑器二进制状态和代码漂移，diff 干净。
-- **GameBase 提供公共外壳。** 深色背景（`#0d1220`）、左上角「< 返回」、右上角「?」玩法、居中标题。子类在 `_init()` 里设 `title_text` 和 `help_text`，并重写 `_build_game()`。打开玩法时暂停游戏树，避免计时在说明底下继续跑。答对/答错用 `_burst_feedback` 打出全屏大字 + 色闪，避免只靠一行小提示。记住关卡的游戏用同一套进度门：`_show_progress_gate` / `_on_progress_continue` / `_on_progress_fresh`（绿钮进最新一关，灰钮从头开始）。汉诺塔、追踪异色球、舒尔特方格、积木跨度已接；反向色字复用同一套 UI 选简单/困难。规则变了、线索靶不需要进度门。新关照抄，不要另做一套选择 UI。改某一关后对照 [improvements.md](improvements.md) 该关一节更新现状和勾选。
+- **GameBase 提供公共外壳。** 深色背景（`#0d1220`）、左上角「< 返回」、右上角「?」玩法、居中标题。子类在 `_init()` 里设 `title_text` 和 `help_text`，并重写 `_build_game()`。打开玩法时暂停游戏树，避免计时在说明底下继续跑。答对/答错用 `_burst_feedback` 打出全屏大字 + 色闪，避免只靠一行小提示。记住关卡的游戏用同一套进度门：`_show_progress_gate` / `_on_progress_continue` / `_on_progress_fresh`（绿钮进最新一关，灰钮从头开始）。汉诺塔、追踪异色球、舒尔特方格、积木跨度、末项记已接；反向色字复用同一套 UI 选简单/困难。规则变了、线索靶不需要进度门。新关照抄，不要另做一套选择 UI。改某一关后对照 [improvements.md](improvements.md) 该关一节更新现状和勾选。
 - **Hub 用数据驱动注册。** `GAMES` 数组是唯一注册点：`{title, func, group, scene, built}`。列表按 `group`（执行功能）分段；卡片两行（游戏名 + 练什么）。未实现的游戏 `built: false` → 置灰并在右侧标「即将推出」，功能说明仍可见；实现后翻成 `true` 并填 `scene` 路径即可。
 - **游戏间零耦合。** 每个游戏一个场景 + 一个脚本，返回即 `change_scene_to_file` 回 hub，无共享运行时状态。本地成绩各自存 `user://*.cfg`。
 - **Hub 检查 GitHub Release。** 进首页时请求 `releases/latest`，远程 tag 比 `application/config/version` 新则底部提示「有新版本」；点开浏览器下载页。失败静默；点 × 记下该 tag，不再提示。不自动安装。
@@ -158,8 +159,9 @@ PROJ="<项目路径>"
 | 11 | 规则变了 | 认知灵活性·规则推断 | WCST-lite | RuleShift.tscn | ✅ 已实现 |
 | 12 | 汉诺塔 | 计划·前瞻 | Tower of Hanoi | Hanoi.tscn | ✅ 已实现 |
 | 13 | 线索靶 | 注意·语境维持 | AX-CPT | AxCpt.tscn | ✅ 已实现 |
+| 14 | 末项记 | 工作记忆·末项更新 | Running Span | RunningSpan.tscn | ✅ 已实现 |
 
-十三个游戏均已实现。
+十四个游戏均已实现。
 
 
 ### Hub「今日一练」✅ 已实现
@@ -324,6 +326,20 @@ PROJ="<项目路径>"
 - 计分：甲→靶 点是 +10+连对加成；陷阱（AY/BX）点否 +15；BY 点否 +12；错/超时断连击；本地 `user://axcpt_best.cfg`
 - **不做** Dual N-Back、不加声音通道、不加第二套规则
 
+
+### 5.14 末项记 RunningSpan ✅ 已实现
+
+**玩法**：数字 1–9 一条条闪过；串比「末项数 N」更长。串结束后，按从早到晚的顺序点出**最后 N 个**。前面的要主动丢掉。与积木跨度（整段空间顺序复述）、N-Back（当前是否与 N 步前相同）区分开。
+
+**已实现规格**（`scripts/RunningSpan.gd`）：
+
+- 范式：Running Span / running memory（工作记忆更新）
+- 末项 N 从 2 起，全对 +1（最多 7），点错 −1（最少 2）；串长 = N + 随机 1–3
+- 显示约 0.75→0.50s（随连对）；数字间间隔 0.18s；一局约 **60 秒**
+- 进场进度门（历史最长末项 > 2）；本地 `user://running_span_best.cfg`
+- 计分：全对 10 + N×5 + 连对加成；错断连击并略降 N
+- **不做** Dual N-Back、不加听觉通道、不做 Digit Span 整段复述（与积木跨度同属跨度复述）
+
 ## 6. 共享视觉规范
 
 
@@ -345,7 +361,7 @@ PROJ="<项目路径>"
 ## 8. 首版待验证问题（产品层面）
 
 - Stroop 困难模式：黑字 + 底色干扰，选项字对题目字体颜色；简单模式灰底黑字。实玩看困难是否又变成对色、简单是否太易。错题 −10 已落地（v1.4.0），再看乱点是否收敛
-- 13 个入口玩家是否看得懂各练什么（hub 已分组；局内右上角「?」可看玩法）
+- 14 个入口玩家是否看得懂各练什么（hub 已分组；局内右上角「?」可看玩法）
 - 合集的整体留存动力：「每日一练」已在 Hub 落地（本地日选 + 可选「今日已练」标记）；无账号/连续打卡/通知
 
 ## 9. 明确不做（当前版本）
