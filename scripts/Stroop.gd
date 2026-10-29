@@ -10,8 +10,16 @@ const COLORS := [
 ]
 
 const LIVES := 3
-const TRIAL_TIME := 2.5
+const TIME_START := 2.5
+const TIME_MIN := 0.9
+const TIME_STEP := 0.08
+const TIME_RECOVER := 0.05
+const SPEED_EVERY := 4
+## 约 12% 一致试次：字色相同，避免「永远反着读」。
+const CONGRUENT_RATIO := 0.12
 const INTER_TRIAL := 0.35
+## 加速到此以下时关掉全屏大字 burst，只留短提示。
+const BURST_CUTOFF := 1.1
 const HINT_IDLE := "点选项上的字，对上题目字的颜色"
 const BEST_PATH := "user://stroop_best.cfg"
 const TIMER_WIDTH := 400.0
@@ -27,8 +35,10 @@ var lives := LIVES
 var streak := 0
 var best_streak := 0
 var best_score := 0
-var trial_time_left := TRIAL_TIME
+var trial_limit := TIME_START
+var trial_time_left := TIME_START
 var correct_color := ""
+var congruent := false
 var game_over := false
 var waiting := false
 var trial_id := 0
@@ -47,7 +57,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "反向色字"
-	help_text = "中央是有颜色的字，字义和字体颜色一定不同。点下面写着「字体颜色」的按钮。\n简单：选项灰底黑字，位置每题仍会变。困难：选项底色是干扰，不要对色块。\n每题 2.5 秒。点错或超时扣一命。"
+	help_text = "中央是有颜色的字。多数时候字义和字体颜色不同，偶有相同。点下面写着「字体颜色」的按钮。\n简单：选项灰底黑字，位置每题仍会变。困难：选项底色是干扰，不要对色块。\n每题从 2.5 秒起，连对会加快（约每 4 连 −0.08 秒，下限约 0.9 秒）；点错略放慢。超时或点错扣一命。"
 
 
 func _build_game() -> void:
@@ -201,6 +211,8 @@ func _start_play() -> void:
 	lives = LIVES
 	streak = 0
 	best_streak = 0
+	trial_limit = TIME_START
+	congruent = false
 	game_over = false
 	waiting = false
 	trial_id += 1
@@ -292,14 +304,19 @@ func _new_trial() -> void:
 		return
 	waiting = false
 	word_label.modulate = Color.WHITE
-	trial_time_left = TRIAL_TIME
+	trial_time_left = trial_limit
 	timer_bar.size.x = TIMER_WIDTH
 	timer_bar.color = Color("#8ab4ff")
 	_set_hint(HINT_IDLE, Color("#7f8ba6"))
 
 	var ink_idx := randi() % COLORS.size()
-	var offset := randi() % (COLORS.size() - 1) + 1
-	var word_idx := (ink_idx + offset) % COLORS.size()
+	congruent = randf() < CONGRUENT_RATIO
+	var word_idx: int
+	if congruent:
+		word_idx = ink_idx
+	else:
+		var offset := randi() % (COLORS.size() - 1) + 1
+		word_idx = (ink_idx + offset) % COLORS.size()
 	word_label.text = COLORS[word_idx]["name"]
 	word_label.add_theme_color_override("font_color", COLORS[ink_idx]["color"])
 	_paint_panel(Color("#1a2740"))
@@ -321,11 +338,14 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 	if color_name == correct_color:
 		streak += 1
 		best_streak = maxi(best_streak, streak)
-		var time_bonus := int(trial_time_left * 5.0)
+		if streak > 0 and streak % SPEED_EVERY == 0:
+			trial_limit = maxf(TIME_MIN, trial_limit - TIME_STEP)
+		var time_bonus := int(trial_time_left / maxf(trial_limit, 0.01) * 5.0)
 		var pts := 10 + time_bonus + mini(streak, 10) * 2
 		score += pts
 		_set_hint("+%d" % pts, Color("#4ade80"))
-		_burst_feedback("+%d" % pts, Color("#4ade80"))
+		if trial_limit > BURST_CUTOFF:
+			_burst_feedback("+%d" % pts, Color("#4ade80"))
 		word_label.modulate = Color("#4ade80")
 		_update_hud()
 		_begin_gap()
@@ -336,9 +356,11 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 
 func _apply_miss(reason: String) -> void:
 	streak = 0
+	trial_limit = minf(TIME_START, trial_limit + TIME_RECOVER)
 	lives -= 1
 	_set_hint(reason, Color("#ff5d73"))
-	_burst_feedback(reason, Color("#ff5d73"))
+	if trial_limit > BURST_CUTOFF:
+		_burst_feedback(reason, Color("#ff5d73"))
 	_update_hud()
 	if lives <= 0:
 		_end_game()
@@ -380,7 +402,7 @@ func _process(delta: float) -> void:
 		timer_bar.size.x = 0.0
 		_apply_miss("超时")
 		return
-	var ratio := clampf(trial_time_left / TRIAL_TIME, 0.0, 1.0)
+	var ratio := clampf(trial_time_left / maxf(trial_limit, 0.01), 0.0, 1.0)
 	timer_bar.size.x = TIMER_WIDTH * ratio
 	timer_bar.color = Color("#ff5d73") if ratio < 0.25 else Color("#8ab4ff")
 
@@ -392,7 +414,9 @@ func _update_hud() -> void:
 		lives_label.text = "选简单或困难"
 	else:
 		lives_label.add_theme_color_override("font_color", Color("#ff8f9d"))
-		lives_label.text = "生命 %d/%d · %s" % [lives, LIVES, "简单" if easy_mode else "困难"]
+		lives_label.text = "生命 %d/%d · %s · 每题 %.2f 秒" % [
+			lives, LIVES, "简单" if easy_mode else "困难", trial_limit
+		]
 
 
 func _set_hint(text: String, color: Color) -> void:
