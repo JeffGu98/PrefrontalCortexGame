@@ -1,9 +1,10 @@
 extends "res://scripts/GameBase.gd"
-## 舒尔特方格：数字格 5×5 起，点完升到 6×6、7×7。
+## 舒尔特方格：数字格 5×5 起，点完升到 6×6、7×7；档间插入 4×4 呼吸关。
 
 
 const MIN_SIZE := 5
 const MAX_SIZE := 7
+const BREATH_SIZE := 4
 const BEST_PATH := "user://schulte_best.cfg"
 const GAP := 10.0
 const CELL_MAX := 120.0
@@ -26,7 +27,9 @@ var elapsed := 0.0
 var finished := false
 var mistakes := 0
 var board_id := 0
-var best_times := {5: -1.0, 6: -1.0, 7: -1.0}
+var breath_mode := false
+var after_breath_size := -1
+var best_times := {4: -1.0, 5: -1.0, 6: -1.0, 7: -1.0}
 
 var grid: GridContainer
 var time_label: Label
@@ -37,7 +40,7 @@ var cells: Array = []
 
 func _init() -> void:
 	title_text = "舒尔特方格"
-	help_text = "格子里随机排着数字。从 1 开始按顺序点，越快越好。点错会闪红并计入失误，但不用从头来。第一次点击开始计时。\n点完 5×5 会上 6×6，再上 7×7。格子不会在中途换位。\n做到哪一档会记住。再进时选继续最新一档，或从 5×5 重来。"
+	help_text = "格子里随机排着数字。从 1 开始按顺序点，越快越好。点错会闪红并计入失误，但不用从头来。第一次点击开始计时。\n点完 5×5 会上 6×6，再上 7×7。每升一档前会插一局轻松的 4×4「呼吸关」，点完再继续变难。格子不会在中途换位。\n做到哪一档会记住。再进时选继续最新一档，或从 5×5 重来。"
 
 
 func _build_game() -> void:
@@ -152,6 +155,8 @@ func _show_gate() -> void:
 	phase = Phase.GATE
 	finished = true
 	started = false
+	breath_mode = false
+	after_breath_size = -1
 	grid.visible = false
 	restart_button.visible = false
 	_show_progress_gate(
@@ -189,16 +194,30 @@ func _on_progress_fresh() -> void:
 func _start_new() -> void:
 	if phase == Phase.GATE:
 		return
-	if finished and grid_size < MAX_SIZE:
+	if breath_mode:
+		_start_breath(after_breath_size)
+	elif finished and grid_size < MAX_SIZE:
 		_start_board(grid_size + 1)
 	else:
 		_start_board(grid_size)
 
 
 func _start_board(size: int) -> void:
+	breath_mode = false
+	after_breath_size = -1
+	_start_board_raw(clampi(size, MIN_SIZE, MAX_SIZE))
+
+
+func _start_breath(next_size: int) -> void:
+	breath_mode = true
+	after_breath_size = next_size
+	_start_board_raw(BREATH_SIZE)
+
+
+func _start_board_raw(size: int) -> void:
 	phase = Phase.PLAY
 	board_id += 1
-	grid_size = clampi(size, MIN_SIZE, MAX_SIZE)
+	grid_size = size
 	next_number = 1
 	started = false
 	elapsed = 0.0
@@ -209,7 +228,8 @@ func _start_board(size: int) -> void:
 	_rebuild_cells()
 	_reset_grid()
 	_layout_board()
-	_remember_level()
+	if not breath_mode:
+		_remember_level()
 	_refresh_status()
 
 
@@ -292,6 +312,23 @@ func _finish() -> void:
 	started = false
 	var is_best := _record_best()
 	var suffix := " · 新纪录" if is_best else ""
+	if breath_mode:
+		status_label.text = "呼吸关 %s 完成 %.2f 秒（点错 %d）%s" % [_size_label(), elapsed, mistakes, suffix]
+		status_label.add_theme_color_override("font_color", Color("#8ab4ff"))
+		_burst_feedback("轻松一下", Color("#8ab4ff"))
+		var id := board_id
+		await get_tree().create_timer(NEXT_BOARD_GAP).timeout
+		if not is_inside_tree() or id != board_id or phase != Phase.PLAY:
+			return
+		var nxt := after_breath_size
+		breath_mode = false
+		after_breath_size = -1
+		if nxt >= MIN_SIZE:
+			_start_board(nxt)
+		else:
+			_start_board(MAX_SIZE)
+		return
+
 	status_label.text = "%s 完成 %.2f 秒（点错 %d）%s" % [_size_label(), elapsed, mistakes, suffix]
 	status_label.add_theme_color_override("font_color", Color("#ffd75d") if is_best else Color("#4ade80"))
 	if grid_size < MAX_SIZE:
@@ -299,14 +336,20 @@ func _finish() -> void:
 		latest_size = nxt
 		_save_progress()
 		_burst_feedback(_size_label(), Color("#ffd75d") if is_best else Color("#4ade80"))
-		var id := board_id
+		var id2 := board_id
 		await get_tree().create_timer(NEXT_BOARD_GAP).timeout
-		if not is_inside_tree() or id != board_id or phase != Phase.PLAY:
+		if not is_inside_tree() or id2 != board_id or phase != Phase.PLAY:
 			return
-		_start_board(nxt)
+		_start_breath(nxt)
 	else:
 		_save_progress()
 		_burst_feedback(_size_label(), Color("#ffd75d") if is_best else Color("#4ade80"))
+		var id3 := board_id
+		await get_tree().create_timer(NEXT_BOARD_GAP).timeout
+		if not is_inside_tree() or id3 != board_id or phase != Phase.PLAY:
+			return
+		# Cap clear → one breath, then reshuffle 7×7.
+		_start_breath(MAX_SIZE)
 
 
 func _refresh_status() -> void:
@@ -316,8 +359,9 @@ func _refresh_status() -> void:
 		status_label.add_theme_color_override("font_color", Color("#7f8ba6"))
 		status_label.text = _idle_text()
 		return
-	status_label.add_theme_color_override("font_color", Color("#8ab4ff"))
-	var body := "%s  下一个 %d／%d" % [_size_label(), next_number, _cell_count()]
+	status_label.add_theme_color_override("font_color", Color("#8ab4ff") if breath_mode else Color("#8ab4ff"))
+	var tag := "呼吸关 " if breath_mode else ""
+	var body := "%s%s  下一个 %d／%d" % [tag, _size_label(), next_number, _cell_count()]
 	if mistakes > 0:
 		body += " · 点错 %d" % mistakes
 	status_label.text = body
@@ -325,7 +369,10 @@ func _refresh_status() -> void:
 
 func _idle_text() -> String:
 	var best: float = best_times.get(grid_size, -1.0)
-	var head := "%s  下一个 1／%d" % [_size_label(), _cell_count()]
+	var tag := "呼吸关 " if breath_mode else ""
+	var head := "%s%s  下一个 1／%d" % [tag, _size_label(), _cell_count()]
+	if breath_mode:
+		return "%s · 轻松一局后再变难" % head
 	if best > 0.0:
 		return "%s · 最佳 %.2f 秒" % [head, best]
 	return "%s · 按顺序点击" % head
@@ -349,6 +396,7 @@ func _load_best() -> void:
 	var config := ConfigFile.new()
 	if config.load(BEST_PATH) == OK:
 		var legacy := float(config.get_value("best", "time", -1.0))
+		best_times[4] = float(config.get_value("best", "time_4", -1.0))
 		best_times[5] = float(config.get_value("best", "time_5", legacy))
 		best_times[6] = float(config.get_value("best", "time_6", -1.0))
 		best_times[7] = float(config.get_value("best", "time_7", -1.0))
@@ -358,6 +406,7 @@ func _load_best() -> void:
 func _save_progress() -> void:
 	var config := ConfigFile.new()
 	config.set_value("best", "time", best_times.get(5, -1.0))
+	config.set_value("best", "time_4", best_times.get(4, -1.0))
 	config.set_value("best", "time_5", best_times.get(5, -1.0))
 	config.set_value("best", "time_6", best_times.get(6, -1.0))
 	config.set_value("best", "time_7", best_times.get(7, -1.0))
