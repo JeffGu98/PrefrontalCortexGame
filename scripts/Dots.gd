@@ -11,8 +11,9 @@ const COUNT_MIN := 4
 const COUNT_MAX_START := 12
 const SCORE_EXACT := 10
 const SCORE_CLOSE := 5
-const FEEDBACK_TIME := 1.8
-const CLEAR_TIME := 0.5
+const FEEDBACK_TIME_CORRECT := 0.7
+const FEEDBACK_TIME_WRONG := 1.8
+const CLEAR_TIME := 0.2
 const BEST_PATH := "user://dots_best.cfg"
 const MAX_DIGITS := 3
 const KEYPAD_COLS := 3
@@ -407,7 +408,7 @@ func _confirm() -> void:
 	flash_bar.visible = false
 	_tint_panel(Color("#152034"))
 	phase = Phase.FEEDBACK
-	feedback_left = FEEDBACK_TIME
+	feedback_left = FEEDBACK_TIME_CORRECT if error == 0 else FEEDBACK_TIME_WRONG
 	_update_hud()
 
 

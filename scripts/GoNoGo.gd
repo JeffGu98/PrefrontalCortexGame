@@ -4,13 +4,15 @@ extends "res://scripts/GameBase.gd"
 
 const LIVES := 3
 const DISPLAY_TIME := 1.0
-const GAP_MIN := 0.9
-const GAP_MAX := 1.4
+const DISPLAY_TIME_MIN := 0.55
+const GAP_MIN := 0.35
+const GAP_MAX := 0.6
 const READY_TIME := 1.0
 const RULE_TIME := 1.2
-const GO_RATIO := 0.75
+const GO_RATIO := 0.62
 const MAX_GO_STREAK := 4
-const FLIP_AFTER := 10
+const FLIP_AFTER_MIN := 6
+const FLIP_AFTER_MAX := 9
 const SCORE_GO := 10
 const SCORE_NOGO := 15
 const BEST_PATH := "user://gonogo_best.cfg"
@@ -29,6 +31,8 @@ var is_go := true
 var reversed := false
 var consecutive_go := 0
 var corrects_since_flip := 0
+var flip_at := 6
+var current_display := DISPLAY_TIME
 
 var score_label: Label
 var lives_label: Label
@@ -45,7 +49,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "反向反应"
-	help_text = "圆出现之后再决定点不点。点圆或底部「点」都可以。\n默认：绿圆要点，红圆不要点。点中绿圆得 10 分，红圆忍住得 15 分。\n点了不该点的、或该点却没点，都扣一命。连对多次后规则会反转，看顶部色块上的「点 / 停」。"
+	help_text = "圆出现之后再决定点不点。点圆或底部「点」都可以。\n默认：绿圆要点，红圆不要点。点中绿圆得 10 分，红圆忍住得 15 分。\n点了不该点的、或该点却没点，都扣一命。连对大约 6–9 次后规则会反转，看顶部色块上的「点 / 停」。连对时圆出现得更短。"
 
 
 func _build_game() -> void:
@@ -186,6 +190,8 @@ func _start_round() -> void:
 	reversed = false
 	consecutive_go = 0
 	corrects_since_flip = 0
+	flip_at = randi_range(FLIP_AFTER_MIN, FLIP_AFTER_MAX)
+	current_display = DISPLAY_TIME
 	phase = Phase.READY
 	phase_left = READY_TIME
 	stim_btn.visible = false
@@ -235,7 +241,8 @@ func _show_stim() -> void:
 	timer_bar.size.x = timer_track.size.x
 	timer_bar.color = Color("#8ab4ff")
 	phase = Phase.STIM
-	phase_left = DISPLAY_TIME
+	current_display = maxf(DISPLAY_TIME_MIN, lerpf(DISPLAY_TIME, DISPLAY_TIME_MIN, clampf(float(streak) / 10.0, 0.0, 1.0)))
+	phase_left = current_display
 	_set_hint("出现了", Color("#7f8ba6"))
 	_update_hud()
 
@@ -284,6 +291,7 @@ func _begin_gap() -> void:
 func _begin_rule_change() -> void:
 	reversed = not reversed
 	corrects_since_flip = 0
+	flip_at = randi_range(FLIP_AFTER_MIN, FLIP_AFTER_MAX)
 	consecutive_go = 0
 	stim_btn.visible = false
 	timer_track.visible = false
@@ -310,7 +318,7 @@ func _succeed(points: int, reason: String) -> void:
 	_set_hint("%s  +%d" % [reason, points], Color("#4ade80"))
 	_burst_feedback("%s  +%d" % [reason, points], Color("#4ade80"))
 	_update_hud()
-	if corrects_since_flip >= FLIP_AFTER:
+	if corrects_since_flip >= flip_at:
 		_begin_rule_change()
 	else:
 		_begin_gap()
@@ -340,7 +348,7 @@ func _process(delta: float) -> void:
 		return
 	phase_left -= delta
 	if phase == Phase.STIM:
-		var ratio := clampf(phase_left / DISPLAY_TIME, 0.0, 1.0)
+		var ratio := clampf(phase_left / maxf(current_display, 0.001), 0.0, 1.0)
 		timer_bar.size.x = timer_track.size.x * ratio
 		timer_bar.color = Color("#ff5d73") if ratio < 0.25 else Color("#8ab4ff")
 		if phase_left <= 0.0:

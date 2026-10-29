@@ -3,7 +3,8 @@ extends "res://scripts/GameBase.gd"
 
 
 const LIVES := 3
-const TRIAL_TIME := 3.0
+const TRIAL_TIME_START := 1.6
+const TRIAL_TIME_MIN := 0.9
 const INTER_TRIAL := 0.35
 const READY_TIME := 1.0
 const SCORE_REPEAT := 10
@@ -26,7 +27,8 @@ var rule := ODD_EVEN
 var stay_left := 3
 var is_switch := false
 var number := 1
-var trial_time_left := TRIAL_TIME
+var current_trial_time := TRIAL_TIME_START
+var trial_time_left := TRIAL_TIME_START
 var waiting := false
 var trial_id := 0
 
@@ -47,7 +49,7 @@ var restart_button: Button
 
 func _init() -> void:
 	title_text = "任务切换"
-	help_text = "中央出现 1–9 的数字（没有 5）。上方色块是当前规则：蓝=奇偶，橙=大于/小于 5。\n按规则点对应按钮。规则会不时切换；切对了分更高。\n每题 3 秒，点错或超时扣命。"
+	help_text = "中央出现 1–9 的数字（没有 5）。上方色块是当前规则：蓝=奇偶，橙=大于/小于 5。\n按规则点对应按钮。规则会不时切换；切对了分更高。\n每题开局约 1.6 秒，连对会更快；点错或超时扣命。"
 
 
 func _build_game() -> void:
@@ -113,7 +115,7 @@ func _build_brief() -> void:
 	brief_panel.add_theme_stylebox_override("panel", style)
 	add_child(brief_panel)
 	brief_label = _make_label(
-		"上方色块就是当前规则。\n蓝底：判断奇数还是偶数\n橙底：判断大于 5 还是小于 5\n\n规则会换。切对了分更高。\n每题 3 秒，看清再点开始。",
+		"上方色块就是当前规则。\n蓝底：判断奇数还是偶数\n橙底：判断大于 5 还是小于 5\n\n规则会换。切对了分更高。\n时间会越来越紧，看清再点开始。",
 		22,
 		Color("#e8edff")
 	)
@@ -196,7 +198,7 @@ func _start_round() -> void:
 	lives = LIVES
 	streak = 0
 	rule = ODD_EVEN if randf() < 0.5 else HIGH_LOW
-	stay_left = randi_range(2, 4)
+	stay_left = randi_range(1, 3)
 	is_switch = false
 	waiting = false
 	phase = Phase.READY
@@ -224,12 +226,13 @@ func _new_trial() -> void:
 		return
 	waiting = false
 	phase = Phase.PLAY
-	trial_time_left = TRIAL_TIME
+	current_trial_time = maxf(TRIAL_TIME_MIN, lerpf(TRIAL_TIME_START, TRIAL_TIME_MIN, clampf(float(streak) / 10.0, 0.0, 1.0)))
+	trial_time_left = current_trial_time
 	is_switch = false
 	stay_left -= 1
 	if stay_left <= 0:
 		rule = HIGH_LOW if rule == ODD_EVEN else ODD_EVEN
-		stay_left = randi_range(2, 4)
+		stay_left = randi_range(1, 3)
 		is_switch = true
 	number = randi_range(1, 4) if randf() < 0.5 else randi_range(6, 9)
 	number_label.text = str(number)
@@ -316,7 +319,7 @@ func _process(delta: float) -> void:
 	if phase != Phase.PLAY or waiting:
 		return
 	trial_time_left -= delta
-	var ratio := clampf(trial_time_left / TRIAL_TIME, 0.0, 1.0)
+	var ratio := clampf(trial_time_left / maxf(current_trial_time, 0.001), 0.0, 1.0)
 	timer_bar.size.x = timer_track.size.x * ratio
 	timer_bar.color = Color("#ff5d73") if ratio < 0.25 else Color("#8ab4ff")
 	if trial_time_left <= 0.0:
