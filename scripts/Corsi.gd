@@ -15,7 +15,7 @@ const INPUT_GAP := 0.35
 const BEST_PATH := "user://corsi_best.cfg"
 const DIM := Color("#1a2740")
 const LIT := Color("#8ab4ff")
-const OK := Color("#4ade80")
+const COLOR_OK := Color("#4ade80")
 const BAD := Color("#ff5d73")
 const IDLE_HINT := "看方块点亮的顺序，再按同样顺序点回去"
 
@@ -235,7 +235,7 @@ func _on_tap(index: int) -> void:
 	accepting = false
 	var expect: int = sequence[input_i]
 	if index == expect:
-		_paint_cell(index, OK)
+		_paint_cell(index, COLOR_OK)
 		input_i += 1
 		if input_i >= sequence.size():
 			_on_trial_correct()
