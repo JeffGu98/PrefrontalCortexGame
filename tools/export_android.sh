@@ -10,19 +10,16 @@ CREDENTIALS_ENV="${CREDENTIALS_ENV:-/home/box/secrets/prefrontalcortexgame/crede
 PRESET_NAME="${PRESET_NAME:-Android}"
 OUT_APK="${1:-}"
 
-if [[ ! -f "$CREDENTIALS_ENV" ]]; then
-  echo "Missing credentials: $CREDENTIALS_ENV" >&2
-  echo "Create it from the private keystore backup (KEYSTORE_PATH, KEYSTORE_ALIAS, KEYSTORE_STORE_PASSWORD, KEYSTORE_KEY_PASSWORD)." >&2
-  exit 1
+if [[ -f "$CREDENTIALS_ENV" ]]; then
+  # shellcheck disable=SC1090
+  source "$CREDENTIALS_ENV"
 fi
 
-# shellcheck disable=SC1090
-source "$CREDENTIALS_ENV"
-
-: "${KEYSTORE_PATH:?}"
-: "${KEYSTORE_ALIAS:?}"
-: "${KEYSTORE_STORE_PASSWORD:?}"
-: "${KEYSTORE_KEY_PASSWORD:?}"
+if [[ -z "${KEYSTORE_PATH:-}" || -z "${KEYSTORE_ALIAS:-}" || -z "${KEYSTORE_STORE_PASSWORD:-}" || -z "${KEYSTORE_KEY_PASSWORD:-}" ]]; then
+  echo "Missing credentials. Provide $CREDENTIALS_ENV, or set KEYSTORE_PATH, KEYSTORE_ALIAS, KEYSTORE_STORE_PASSWORD, KEYSTORE_KEY_PASSWORD." >&2
+  echo "On the build machine the file usually comes from the private keystore backup." >&2
+  exit 1
+fi
 
 if [[ ! -f "$KEYSTORE_PATH" ]]; then
   echo "Keystore not found: $KEYSTORE_PATH" >&2

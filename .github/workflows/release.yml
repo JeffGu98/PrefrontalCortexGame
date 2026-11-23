@@ -1,0 +1,209 @@
+name: Build and publish APK
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a GitHub Release (only allowed on a v* tag). Leave unchecked for a signed dry-run build."
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.2"
+  GODOT_RELEASE: "4.7.2-stable"
+  APK_STEM: "PrefrontalCortexGame"
+  RELEASE_TITLE_PREFIX: "前额叶训练场"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check export presets do not embed a keystore
+        run: |
+          set -euo pipefail
+          if grep -E '^keystore/(release|debug)="[^"]+"' export_presets.cfg; then
+            echo "export_presets.cfg must leave keystore paths empty in git" >&2
+            exit 1
+          fi
+
+      - name: Verify tag matches project version
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          PRESET_VERSION="$(grep -E '^version/name=' export_presets.cfg | head -1 | cut -d= -f2 | tr -d '"')"
+          PROJECT_VERSION="$(grep -E '^config/version=' project.godot | head -1 | cut -d= -f2 | tr -d '"')"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          echo "preset=$PRESET_VERSION project=$PROJECT_VERSION tag=$TAG_VERSION"
+          test -n "$PRESET_VERSION"
+          test "$PRESET_VERSION" = "$TAG_VERSION"
+          test "$PROJECT_VERSION" = "$TAG_VERSION"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK components
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)"
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - name: Cache Godot and export templates
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.godot-ci
+          key: godot-4.7.2-stable-linux-x86_64-templates-v1
+
+      - name: Install Godot 4.7.2 and export templates
+        run: |
+          set -euo pipefail
+          CACHE_ROOT="$HOME/.godot-ci"
+          GODOT_BIN="$CACHE_ROOT/Godot_v${GODOT_RELEASE}_linux.x86_64"
+          TEMPLATES_SRC="$CACHE_ROOT/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$CACHE_ROOT" /tmp/godot-dl
+          if [[ ! -x "$GODOT_BIN" ]]; then
+            curl -sSL --fail --retry 5 -o /tmp/godot-dl/godot.zip \
+              "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+            unzip -qo /tmp/godot-dl/godot.zip -d "$CACHE_ROOT"
+            chmod +x "$GODOT_BIN"
+          fi
+          if [[ ! -f "$TEMPLATES_SRC/android_release.apk" ]]; then
+            curl -sSL --fail --retry 5 -o /tmp/godot-dl/templates.tpz \
+              "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+            rm -rf /tmp/godot-dl/templates
+            unzip -qo /tmp/godot-dl/templates.tpz -d /tmp/godot-dl
+            mkdir -p "$TEMPLATES_SRC"
+            mv /tmp/godot-dl/templates/* "$TEMPLATES_SRC/"
+          fi
+          test -x "$GODOT_BIN"
+          test -f "$TEMPLATES_SRC/android_release.apk"
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          ln -sfn "$TEMPLATES_SRC" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT=$GODOT_BIN" >> "$GITHUB_ENV"
+          echo "Installed $($GODOT_BIN --version)"
+
+      - name: Configure Godot Android SDK paths
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/godot"
+          SETTINGS="$HOME/.config/godot/editor_settings-4.7.tres"
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          printf '%s\n' \
+            '[gd_resource type="EditorSettings" format=3]' \
+            '' \
+            '[resource]' \
+            "export/android/java_sdk_path = \"${JAVA_HOME}\"" \
+            "export/android/android_sdk_path = \"${SDK}\"" \
+            > "$SETTINGS"
+          echo "Wrote $SETTINGS java=${JAVA_HOME} sdk=${SDK}"
+
+      - name: Restore release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
+          KEYSTORE_STORE_PASSWORD: ${{ secrets.KEYSTORE_STORE_PASSWORD }}
+          KEYSTORE_KEY_PASSWORD: ${{ secrets.KEYSTORE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${KEYSTORE_BASE64}" || -z "${KEYSTORE_ALIAS}" || -z "${KEYSTORE_STORE_PASSWORD}" || -z "${KEYSTORE_KEY_PASSWORD}" ]]; then
+            echo "Missing one or more required repository secrets: ANDROID_KEYSTORE_BASE64, KEYSTORE_ALIAS, KEYSTORE_STORE_PASSWORD, KEYSTORE_KEY_PASSWORD" >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          test -s "$RUNNER_TEMP/release.keystore"
+          {
+            printf 'KEYSTORE_PATH=%s\n' "$RUNNER_TEMP/release.keystore"
+            printf 'KEYSTORE_ALIAS=%s\n' "$KEYSTORE_ALIAS"
+            printf 'KEYSTORE_STORE_PASSWORD=%s\n' "$KEYSTORE_STORE_PASSWORD"
+            printf 'KEYSTORE_KEY_PASSWORD=%s\n' "$KEYSTORE_KEY_PASSWORD"
+          } > "$RUNNER_TEMP/credentials.env"
+          keytool -list -keystore "$RUNNER_TEMP/release.keystore" -storepass "$KEYSTORE_STORE_PASSWORD" -alias "$KEYSTORE_ALIAS" >/dev/null
+          echo "CREDENTIALS_ENV=$RUNNER_TEMP/credentials.env" >> "$GITHUB_ENV"
+
+      - name: Import Godot project
+        run: |
+          set -euo pipefail
+          "$GODOT" --headless --path "$GITHUB_WORKSPACE" --import
+
+      - name: Export signed APK
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="${JAVA_HOME}"
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export CREDENTIALS_ENV="${CREDENTIALS_ENV}"
+          VERSION_NAME="$(grep -E '^version/name=' export_presets.cfg | head -1 | cut -d= -f2 | tr -d '"')"
+          mkdir -p "$GITHUB_WORKSPACE/build"
+          OUT="$GITHUB_WORKSPACE/build/${APK_STEM}-${VERSION_NAME}.apk"
+          ./tools/export_android.sh "$OUT"
+          test -s "$OUT"
+          echo "APK_PATH=$OUT" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(ls "${ANDROID_HOME}/build-tools/"*/apksigner | sort | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH"
+
+      - name: Keep workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_STEM }}-${{ env.VERSION_NAME }}
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+
+      - name: Decide whether to publish
+        id: meta
+        env:
+          REQUEST_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
+        run: |
+          set -euo pipefail
+          publish=false
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
+            publish=true
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$REQUEST_PUBLISH" == "true" && "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" == v* ]]; then
+            publish=true
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "Publish decision: $publish (event=$GITHUB_EVENT_NAME ref=$GITHUB_REF_NAME type=$GITHUB_REF_TYPE)"
+
+      - name: Publish GitHub Release
+        if: steps.meta.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if [[ "$TAG" != v* ]]; then
+            echo "Refusing to publish: $TAG is not a v* tag" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite assets." >&2
+            exit 1
+          fi
+          gh release create "$TAG" "$APK_PATH" --verify-tag --generate-notes --title "${RELEASE_TITLE_PREFIX} ${TAG#v}"
