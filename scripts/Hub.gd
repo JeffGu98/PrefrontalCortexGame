@@ -9,6 +9,8 @@ const DAILY_PATH := "user://daily.cfg"
 
 var _scroll: ScrollContainer
 var _release_url := RELEASES_PAGE
+var _quit_armed := false
+var _quit_hint: Label
 
 
 const GAMES := [
@@ -21,6 +23,7 @@ const GAMES := [
 	{"title": "线索靶", "func": "注意 · 语境维持", "group": "注意", "scene": "res://scenes/AxCpt.tscn", "built": true},
 	{"title": "N-Back", "func": "工作记忆 · 更新", "group": "工作记忆", "scene": "res://scenes/NBack.tscn", "built": true},
 	{"title": "积木跨度", "func": "工作记忆 · 空间序列", "group": "工作记忆", "scene": "res://scenes/Corsi.tscn", "built": true},
+	{"title": "各点一次", "func": "工作记忆 · 自我监控", "group": "工作记忆", "scene": "res://scenes/SelfOrder.tscn", "built": true},
 	{"title": "末项记", "func": "工作记忆 · 末项更新", "group": "工作记忆", "scene": "res://scenes/RunningSpan.tscn", "built": true},
 	{"title": "看点数", "func": "工作记忆 · 瞬时", "group": "工作记忆", "scene": "res://scenes/Dots.tscn", "built": true},
 	{"title": "任务切换", "func": "认知灵活性 · 线索切换", "group": "认知灵活性", "scene": "res://scenes/Switch.tscn", "built": true},
@@ -35,6 +38,7 @@ func _ready() -> void:
 	_build_header()
 	_build_list()
 	_check_for_update()
+	_bind_system_back()
 
 
 func _build_background() -> void:
@@ -441,3 +445,65 @@ func _hide_update_banner(bar: Control, tag: String) -> void:
 
 func _open_release() -> void:
 	OS.shell_open(_release_url)
+
+
+func _bind_system_back() -> void:
+	var win := get_window()
+	if win != null and not win.go_back_requested.is_connected(_on_system_back):
+		win.go_back_requested.connect(_on_system_back)
+	if not tree_exiting.is_connected(_unbind_system_back):
+		tree_exiting.connect(_unbind_system_back)
+
+
+func _unbind_system_back() -> void:
+	var win := get_window()
+	if win != null and win.go_back_requested.is_connected(_on_system_back):
+		win.go_back_requested.disconnect(_on_system_back)
+
+
+func _on_system_back() -> void:
+	_arm_or_quit()
+
+
+func _input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo:
+		return
+	if key.keycode != KEY_ESCAPE:
+		return
+	_arm_or_quit()
+	get_viewport().set_input_as_handled()
+
+
+func _arm_or_quit() -> void:
+	if _quit_armed:
+		get_tree().quit()
+		return
+	_quit_armed = true
+	_show_quit_hint()
+	get_tree().create_timer(2.0).timeout.connect(_disarm_quit)
+
+
+func _disarm_quit() -> void:
+	_quit_armed = false
+	if _quit_hint != null:
+		_quit_hint.queue_free()
+		_quit_hint = null
+
+
+func _show_quit_hint() -> void:
+	if _quit_hint != null:
+		_quit_hint.queue_free()
+	_quit_hint = Label.new()
+	_quit_hint.text = "再按一次返回退出"
+	_quit_hint.add_theme_font_size_override("font_size", 18)
+	_quit_hint.add_theme_color_override("font_color", Color("#e8edff"))
+	_quit_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_quit_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_quit_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_quit_hint.z_index = 30
+	_quit_hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_quit_hint.offset_top = -88
+	_quit_hint.offset_bottom = -44
+	add_child(_quit_hint)
+

@@ -14,6 +14,7 @@ var _gate_panel: Panel
 var _gate_label: Label
 var _gate_continue_btn: Button
 var _gate_fresh_btn: Button
+var _leaving := false
 
 
 func _ready() -> void:
@@ -26,6 +27,7 @@ func _ready() -> void:
 	_build_progress_gate()
 	_build_game()
 	_build_help_overlay()
+	_bind_system_back()
 
 
 func _build_background() -> void:
@@ -226,6 +228,28 @@ func _build_help_overlay() -> void:
 	box.add_child(close_btn)
 
 
+
+func _bind_system_back() -> void:
+	var win := get_window()
+	if win != null and not win.go_back_requested.is_connected(_on_system_back):
+		win.go_back_requested.connect(_on_system_back)
+	if not tree_exiting.is_connected(_unbind_system_back):
+		tree_exiting.connect(_unbind_system_back)
+
+
+func _unbind_system_back() -> void:
+	var win := get_window()
+	if win != null and win.go_back_requested.is_connected(_on_system_back):
+		win.go_back_requested.disconnect(_on_system_back)
+
+
+func _on_system_back() -> void:
+	if _help_open:
+		_hide_help()
+	else:
+		_go_back()
+
+
 func _toggle_help() -> void:
 	if _help_open:
 		_hide_help()
@@ -256,8 +280,23 @@ func _on_help_dim_input(event: InputEvent) -> void:
 
 
 func _go_back() -> void:
+	if _leaving:
+		return
+	_leaving = true
 	get_tree().paused = false
 	get_tree().change_scene_to_file(HUB_SCENE)
+
+
+func _input(event: InputEvent) -> void:
+	var key := event as InputEventKey
+	if key == null or not key.pressed or key.echo:
+		return
+	if key.keycode != KEY_ESCAPE:
+		return
+	if _help_open:
+		return
+	_go_back()
+	get_viewport().set_input_as_handled()
 
 
 func _make_label(text: String, font_size: int, color: Color) -> Label:
