@@ -17,12 +17,8 @@ var _quit_hint: Label
 
 const GAMES := [
 	{"title": "反向色字", "func": "抑制控制 · 干扰", "group": "抑制控制", "scene": "res://scenes/Stroop.tscn", "built": true},
-	{"title": "反向反应", "func": "抑制控制 · 克制", "group": "抑制控制", "scene": "res://scenes/GoNoGo.tscn", "built": true},
-	{"title": "红灯停", "func": "抑制控制 · 刹车", "group": "抑制控制", "scene": "res://scenes/StopSignal.tscn", "built": true},
-	{"title": "中间箭头", "func": "抑制控制 · 侧翼", "group": "抑制控制", "scene": "res://scenes/Flanker.tscn", "built": true},
 	{"title": "舒尔特方格", "func": "专注 · 视觉搜索", "group": "注意", "scene": "res://scenes/Schulte.tscn", "built": true},
 	{"title": "追踪异色球", "func": "注意 · 追踪", "group": "注意", "scene": "res://scenes/Track.tscn", "built": true},
-	{"title": "线索靶", "func": "注意 · 语境维持", "group": "注意", "scene": "res://scenes/AxCpt.tscn", "built": true},
 	{"title": "N-Back", "func": "工作记忆 · 更新", "group": "工作记忆", "scene": "res://scenes/NBack.tscn", "built": true},
 	{"title": "积木跨度", "func": "工作记忆 · 空间序列", "group": "工作记忆", "scene": "res://scenes/Corsi.tscn", "built": true},
 	{"title": "各点一次", "func": "工作记忆 · 自我监控", "group": "工作记忆", "scene": "res://scenes/SelfOrder.tscn", "built": true},
@@ -108,7 +104,7 @@ func _build_list() -> void:
 
 
 func _built_games() -> Array:
-	# Daily pool = every built game in GAMES order (线索靶 / 末项记 / 规则变了 / … auto-join when built:true).
+	# Daily pool = every built game in GAMES order (末项记 / 各点一次 / 规则变了 / … auto-join when built:true).
 	var out: Array = []
 	for game in GAMES:
 		if game["built"]:
