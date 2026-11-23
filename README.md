@@ -10,7 +10,7 @@
 - 用 Godot 编辑器打开本目录，F5 运行
 - 竖屏 720×1280 基准（`canvas_items` 拉伸），面向移动端，桌面可直接测试
 - 发布只打 Android APK，见 [Releases](https://github.com/JeffGu98/PrefrontalCortexGame/releases)（旁加载）
-- Android 正式签名用**仓库外**的项目 keystore（见 [docs/android-signing.md](docs/android-signing.md)）；`export_presets.cfg` 里不放密钥
+- 正式包通过推送与版本号一致的标签发布；GitHub Actions 用仓库 Secrets 里的项目密钥签名。同一把密钥也备份在私有仓 `JeffGu98/PrefrontalCortexGame-keystore`（不要删除，也不要提交进本仓）。详见 [docs/android-signing.md](docs/android-signing.md)；`export_presets.cfg` 里不放密钥
 - 不做 iOS / iPhone 包
 
 ## 结构
