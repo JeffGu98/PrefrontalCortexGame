@@ -1,6 +1,6 @@
 # PrefrontalCortexGame · 前额叶训练场
 
-一个 Godot 4 认知训练游戏合集：hub 首页 + 10 个独立小游戏，每个游戏对应一种真实存在的认知科学任务范式（Stroop、舒尔特方格、N-Back 等），练的是前额叶执行功能的某一个具体侧面。
+一个 Godot 4 认知训练游戏合集：hub 首页 + 15 个独立小游戏，每个游戏对应一种真实存在的认知科学任务范式（Stroop、舒尔特方格、N-Back、自我监控指向等），练的是前额叶执行功能的某一个具体侧面。
 
 **诚实原则**：游戏只练「该能力在游戏内的熟练度」，不承诺迁移到现实、不承诺变聪明。文案中不使用「修复大脑」「激活 CEO」这类话术。
 
@@ -29,7 +29,12 @@ prefrontal-cortex-game/
 │   ├── Switch.tscn        # 任务切换
 │   ├── Track.tscn         # 追踪异色球
 │   ├── Flanker.tscn       # 中间箭头
-│   └── Hanoi.tscn         # 汉诺塔
+│   ├── Hanoi.tscn         # 汉诺塔
+│   ├── Corsi.tscn         # 积木跨度
+│   ├── RuleShift.tscn     # 规则变了
+│   ├── AxCpt.tscn         # 线索靶
+│   ├── RunningSpan.tscn   # 末项记
+│   └── SelfOrder.tscn     # 各点一次
 ├── scripts/
 │   ├── GameBase.gd        # 所有游戏的共享脚手架（背景/返回/标题）
 │   ├── Hub.gd             # 菜单：GAMES 数组注册所有游戏
@@ -41,10 +46,10 @@ prefrontal-cortex-game/
 
 阅读 [docs/design.md](docs/design.md)，其中包含：
 
-- 项目理念与认知科学依据（为什么是这 10 个游戏）
+- 项目理念与认知科学依据（为什么选这些游戏）
 - 架构决策与代码规范
 - **如何新增一个游戏**（五步流程 + 代码模板）
-- 全部 10 个游戏的实现规格（均已实现）
+- 全部游戏的实现规格（均已实现）
 - 验证流程与当前已知问题
 
 游戏手感（心流、反馈、难度曲线、技能原子）的摘录见 [docs/game-design.md](docs/game-design.md)，和产品规格分开。
