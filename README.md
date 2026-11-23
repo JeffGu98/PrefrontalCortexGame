@@ -1,6 +1,6 @@
 # PrefrontalCortexGame · 前额叶训练场
 
-一个 Godot 4 认知训练游戏合集：hub 首页 + 15 个独立小游戏，每个游戏对应一种真实存在的认知科学任务范式（Stroop、舒尔特方格、N-Back、自我监控指向等），练的是前额叶执行功能的某一个具体侧面。
+一个 Godot 4 认知训练游戏合集：hub 首页 + 11 个独立小游戏，每个游戏对应一种真实存在的认知科学任务范式（Stroop、舒尔特方格、N-Back、自我监控指向等），练的是前额叶执行功能的某一个具体侧面。
 
 **诚实原则**：游戏只练「该能力在游戏内的熟练度」，不承诺迁移到现实、不承诺变聪明。文案中不使用「修复大脑」「激活 CEO」这类话术。
 
@@ -23,16 +23,12 @@ prefrontal-cortex-game/
 │   ├── Stroop.tscn        # 反向色字
 │   ├── Schulte.tscn       # 舒尔特方格
 │   ├── Dots.tscn          # 看点数
-│   ├── GoNoGo.tscn        # 反向反应
-│   ├── StopSignal.tscn    # 红灯停
 │   ├── NBack.tscn         # N-Back
 │   ├── Switch.tscn        # 任务切换
 │   ├── Track.tscn         # 追踪异色球
-│   ├── Flanker.tscn       # 中间箭头
 │   ├── Hanoi.tscn         # 汉诺塔
 │   ├── Corsi.tscn         # 积木跨度
 │   ├── RuleShift.tscn     # 规则变了
-│   ├── AxCpt.tscn         # 线索靶
 │   ├── RunningSpan.tscn   # 末项记
 │   └── SelfOrder.tscn     # 各点一次
 ├── scripts/

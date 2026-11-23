@@ -24,14 +24,14 @@ func _run_all() -> void:
 func _check_versions() -> int:
 	var failed := 0
 	var project := str(ProjectSettings.get_setting("application/config/version", ""))
-	if project != "1.7.1":
+	if project != "1.8.0":
 		print("FAIL version project=%s" % project)
 		failed += 1
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
-	if presets.find('version/name="1.7.1"') < 0 or presets.find("version/code=171") < 0:
+	if presets.find('version/name="1.8.0"') < 0 or presets.find("version/code=180") < 0:
 		print("FAIL export_presets version")
 		failed += 1
-	if presets.find('export_path="build/PrefrontalCortexGame-1.7.1.apk"') < 0:
+	if presets.find('export_path="build/PrefrontalCortexGame-1.8.0.apk"') < 0:
 		print("FAIL export_path")
 		failed += 1
 	for key in ["keystore/debug=", "keystore/release=", "keystore/debug_password=", "keystore/release_password="]:
@@ -51,7 +51,7 @@ func _check_hub_games() -> int:
 		print("FAIL load Hub.gd")
 		return 1
 	var games: Array = hub_script.GAMES
-	if games.size() != 15:
+	if games.size() != 11:
 		print("FAIL GAMES size %d" % games.size())
 		failed += 1
 	var titles: Dictionary = {}
@@ -80,6 +80,15 @@ func _check_hub_games() -> int:
 	if not found_new:
 		print("FAIL 各点一次 not registered")
 		failed += 1
+	var kept := ["反向色字", "舒尔特方格", "追踪异色球", "N-Back", "积木跨度", "各点一次", "末项记", "看点数", "任务切换", "规则变了", "汉诺塔"]
+	for title in kept:
+		if not titles.has(title):
+			print("FAIL missing kept game %s" % title)
+			failed += 1
+	for title in ["反向反应", "中间箭头", "线索靶", "红灯停"]:
+		if titles.has(title):
+			print("FAIL removed game still registered %s" % title)
+			failed += 1
 	return failed
 
 
