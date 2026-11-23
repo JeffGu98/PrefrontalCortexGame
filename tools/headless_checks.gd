@@ -12,6 +12,7 @@ func _run_all() -> void:
 	failed += _check_hub_games()
 	failed += _check_self_order_logic()
 	failed += await _check_self_order_play()
+	failed += await _check_hub_scroll_vs_tap()
 	if failed == 0:
 		print("HEADLESS_CHECKS_OK")
 		quit(0)
@@ -23,14 +24,14 @@ func _run_all() -> void:
 func _check_versions() -> int:
 	var failed := 0
 	var project := str(ProjectSettings.get_setting("application/config/version", ""))
-	if project != "1.7.0":
+	if project != "1.7.1":
 		print("FAIL version project=%s" % project)
 		failed += 1
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
-	if presets.find('version/name="1.7.0"') < 0 or presets.find("version/code=170") < 0:
+	if presets.find('version/name="1.7.1"') < 0 or presets.find("version/code=171") < 0:
 		print("FAIL export_presets version")
 		failed += 1
-	if presets.find('export_path="build/PrefrontalCortexGame-1.7.0.apk"') < 0:
+	if presets.find('export_path="build/PrefrontalCortexGame-1.7.1.apk"') < 0:
 		print("FAIL export_path")
 		failed += 1
 	for key in ["keystore/debug=", "keystore/release=", "keystore/debug_password=", "keystore/release_password="]:
@@ -231,3 +232,132 @@ func _check_self_order_play() -> int:
 	print("SELFORDER_PLAY_OK")
 	return 0
 
+
+func _check_hub_scroll_vs_tap() -> int:
+	var packed := load("res://scenes/Hub.tscn")
+	if packed == null:
+		print("FAIL load Hub.tscn")
+		return 1
+	var hub: Node = packed.instantiate()
+	root.add_child(hub)
+	for _i in range(6):
+		await process_frame
+	var opened: Array = []
+	hub.open_intercept = func(path: String) -> void:
+		opened.append(path)
+	var scroll: ScrollContainer = hub._scroll
+	if scroll == null:
+		print("FAIL hub has no scroll")
+		hub.queue_free()
+		return 1
+	var bar := scroll.get_v_scroll_bar()
+	if bar == null or bar.max_value <= bar.page + 8.0:
+		print("FAIL hub list is not tall enough to scroll max=%s page=%s" % [bar.max_value if bar else -1, bar.page if bar else -1])
+		hub.queue_free()
+		return 1
+	var card: Control = _find_enabled_hub_card(scroll)
+	if card == null:
+		print("FAIL no hub card")
+		hub.queue_free()
+		return 1
+	var failed := 0
+	# v1.7.0 system back: first press arms, does not quit the tree.
+	if bool(hub._quit_armed):
+		print("FAIL quit already armed")
+		failed += 1
+	hub._on_system_back()
+	if not bool(hub._quit_armed):
+		print("FAIL system back did not arm quit")
+		failed += 1
+	hub._disarm_quit()
+	if bool(hub._quit_armed):
+		print("FAIL disarm quit failed")
+		failed += 1
+
+	# Headless --script has no OS window, so Viewport.push_input never
+	# reaches GUI. Drive the card's _gui_input with the same event shapes.
+	var pos := card.global_position + card.size * 0.5
+	var start_y := int(scroll.scroll_vertical)
+	# Small move stays a tap (threshold is 14).
+	_card_gesture(card, pos, Vector2(0, 4))
+	if opened.size() != 1:
+		print("FAIL short move should tap, opened=%s" % [opened])
+		failed += 1
+	if abs(int(scroll.scroll_vertical) - start_y) > 2:
+		print("FAIL short move scrolled to %s from %s" % [scroll.scroll_vertical, start_y])
+		failed += 1
+	opened.clear()
+
+	# Finger moves up: list should scroll down, and must not open a game.
+	start_y = int(scroll.scroll_vertical)
+	pos = card.global_position + card.size * 0.5
+	_card_gesture(card, pos, Vector2(0, -120))
+	if opened.size() != 0:
+		print("FAIL drag opened a game %s" % [opened])
+		failed += 1
+	var after_drag := int(scroll.scroll_vertical)
+	if after_drag - start_y < 80:
+		print("FAIL drag did not scroll enough start=%d now=%d" % [start_y, after_drag])
+		failed += 1
+
+	# Wheel over a card also scrolls.
+	start_y = int(scroll.scroll_vertical)
+	_card_wheel(card, card.global_position + card.size * 0.5, true)
+	var after_wheel := int(scroll.scroll_vertical)
+	if after_wheel <= start_y:
+		print("FAIL wheel did not scroll start=%d now=%d" % [start_y, after_wheel])
+		failed += 1
+
+	hub.queue_free()
+	await process_frame
+	if failed == 0:
+		print("HUB_SCROLL_VS_TAP_OK")
+	return failed
+
+
+func _find_enabled_hub_card(node: Node) -> Control:
+	if node is Control and (node as Control).has_meta("hub_title"):
+		var card := node as Control
+		if card.get("is_disabled") != true:
+			return card
+	for child in node.get_children():
+		var found := _find_enabled_hub_card(child)
+		if found != null:
+			return found
+	return null
+
+
+func _card_gesture(card: Control, start: Vector2, delta: Vector2) -> void:
+	var down := InputEventMouseButton.new()
+	down.button_index = MOUSE_BUTTON_LEFT
+	down.pressed = true
+	down.position = start - card.global_position
+	down.global_position = start
+	card._gui_input(down)
+	var steps := 6
+	var pos := start
+	var step := delta / float(steps)
+	for _i in range(steps):
+		pos += step
+		var motion := InputEventMouseMotion.new()
+		motion.position = pos - card.global_position
+		motion.global_position = pos
+		motion.relative = step
+		motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+		card._gui_input(motion)
+	var up := InputEventMouseButton.new()
+	up.button_index = MOUSE_BUTTON_LEFT
+	up.pressed = false
+	up.position = start + delta - card.global_position
+	up.global_position = start + delta
+	card._gui_input(up)
+
+
+func _card_wheel(card: Control, pos: Vector2, down: bool) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_WHEEL_DOWN if down else MOUSE_BUTTON_WHEEL_UP
+	ev.pressed = true
+	ev.position = pos - card.global_position
+	ev.global_position = pos
+	ev.factor = 1.0
+	card._gui_input(ev)

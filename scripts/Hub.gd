@@ -9,6 +9,8 @@ const DAILY_PATH := "user://daily.cfg"
 
 var _scroll: ScrollContainer
 var _release_url := RELEASES_PAGE
+## If set, Hub calls this instead of changing scene (used by headless tests).
+var open_intercept: Callable
 var _quit_armed := false
 var _quit_hint: Label
 
@@ -152,13 +154,9 @@ func _mark_daily_played() -> void:
 	config.save(DAILY_PATH)
 
 
-func _make_daily_card() -> Button:
+func _make_daily_card() -> HubCard:
 	var game: Dictionary = _daily_game()
-	var btn := Button.new()
-	btn.text = ""
-	btn.custom_minimum_size = Vector2(0, 108)
-	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(btn, Color("#243552"))
+	var btn := _make_hub_card(108, Color("#243552"), not game.has("scene"))
 
 	var pad := MarginContainer.new()
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -211,9 +209,7 @@ func _make_daily_card() -> Button:
 	col.add_child(func_label)
 
 	if game.has("scene"):
-		btn.pressed.connect(_open_daily.bind(str(game["scene"])))
-	else:
-		btn.disabled = true
+		btn.activated.connect(_open_daily.bind(str(game["scene"])))
 	return btn
 
 
@@ -240,13 +236,20 @@ func _make_spacer(height: float) -> Control:
 	return spacer
 
 
-func _make_game_button(game: Dictionary) -> Button:
+func _make_hub_card(min_height: float, bg: Color, disabled: bool) -> HubCard:
+	var card := HubCard.new()
+	card.custom_minimum_size = Vector2(0, min_height)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.focus_mode = Control.FOCUS_NONE
+	card.setup(_scroll, bg, disabled)
+	card.set_meta("hub_card", true)
+	return card
+
+
+func _make_game_button(game: Dictionary) -> HubCard:
 	var built: bool = game["built"]
-	var btn := Button.new()
-	btn.text = ""
-	btn.custom_minimum_size = Vector2(0, 88)
-	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_style_button(btn, Color("#1a2740") if built else Color("#12192a"))
+	var btn := _make_hub_card(88, Color("#1a2740") if built else Color("#12192a"), not built)
+	btn.set_meta("hub_title", game["title"])
 
 	var pad := MarginContainer.new()
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -293,9 +296,7 @@ func _make_game_button(game: Dictionary) -> Button:
 		row.add_child(tag)
 
 	if built:
-		btn.pressed.connect(_open_game.bind(game["scene"]))
-	else:
-		btn.disabled = true
+		btn.activated.connect(_open_game.bind(game["scene"]))
 	return btn
 
 
@@ -322,6 +323,9 @@ func _style_button(btn: Button, bg: Color) -> void:
 
 
 func _open_game(scene_path: String) -> void:
+	if open_intercept.is_valid():
+		open_intercept.call(scene_path)
+		return
 	get_tree().change_scene_to_file(scene_path)
 
 
@@ -506,4 +510,112 @@ func _show_quit_hint() -> void:
 	_quit_hint.offset_top = -88
 	_quit_hint.offset_bottom = -44
 	add_child(_quit_hint)
+
+
+class HubCard extends Panel:
+	## Menu card: a tap activates, a drag past the threshold scrolls the hub list.
+	signal activated
+
+	const DRAG_THRESHOLD := 14.0
+
+	var scroll: ScrollContainer
+	var is_disabled := false
+	var _normal: StyleBoxFlat
+	var _hover: StyleBoxFlat
+	var _press: StyleBoxFlat
+	var _tracking := false
+	var _dragging := false
+	var _press_pos := Vector2.ZERO
+	var _last_pos := Vector2.ZERO
+	var _hovering := false
+
+	func setup(p_scroll: ScrollContainer, bg: Color, disabled: bool) -> void:
+		scroll = p_scroll
+		is_disabled = disabled
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		_normal = _make_box(bg)
+		_hover = _make_box(bg.lightened(0.12))
+		_press = _make_box(bg.darkened(0.15))
+		_apply_style()
+		if not mouse_entered.is_connected(_on_mouse_entered):
+			mouse_entered.connect(_on_mouse_entered)
+		if not mouse_exited.is_connected(_on_mouse_exited):
+			mouse_exited.connect(_on_mouse_exited)
+
+	func _make_box(bg: Color) -> StyleBoxFlat:
+		var style := StyleBoxFlat.new()
+		style.bg_color = bg
+		style.set_corner_radius_all(12)
+		return style
+
+	func _apply_style() -> void:
+		if _tracking and not _dragging and not is_disabled:
+			add_theme_stylebox_override("panel", _press)
+		elif _hovering and not _dragging and not is_disabled:
+			add_theme_stylebox_override("panel", _hover)
+		else:
+			add_theme_stylebox_override("panel", _normal)
+
+	func _on_mouse_entered() -> void:
+		_hovering = true
+		if not _tracking:
+			_apply_style()
+
+	func _on_mouse_exited() -> void:
+		_hovering = false
+		if not _tracking:
+			_apply_style()
+
+	func _gui_input(event: InputEvent) -> void:
+		var mouse_btn := event as InputEventMouseButton
+		if mouse_btn != null:
+			if mouse_btn.pressed and (mouse_btn.button_index == MOUSE_BUTTON_WHEEL_UP or mouse_btn.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+				_scroll_by_wheel(mouse_btn)
+				accept_event()
+				return
+			if mouse_btn.button_index == MOUSE_BUTTON_LEFT:
+				if mouse_btn.pressed:
+					_tracking = true
+					_dragging = false
+					_press_pos = mouse_btn.global_position
+					_last_pos = mouse_btn.global_position
+					_apply_style()
+				else:
+					var was_drag := _dragging
+					_tracking = false
+					_dragging = false
+					_apply_style()
+					if not was_drag and not is_disabled:
+						activated.emit()
+					accept_event()
+				return
+		var pan := event as InputEventPanGesture
+		if pan != null:
+			if scroll != null:
+				scroll.scroll_vertical += int(round(pan.delta.y))
+			accept_event()
+			return
+		var motion := event as InputEventMouseMotion
+		if motion != null and _tracking:
+			var pos := motion.global_position
+			if not _dragging and pos.distance_to(_press_pos) >= DRAG_THRESHOLD:
+				_dragging = true
+				_apply_style()
+			if _dragging and scroll != null:
+				scroll.scroll_vertical -= int(round(pos.y - _last_pos.y))
+				accept_event()
+			_last_pos = pos
+
+	func _scroll_by_wheel(wheel: InputEventMouseButton) -> void:
+		if scroll == null:
+			return
+		var bar := scroll.get_v_scroll_bar()
+		var page := bar.page if bar != null else 120.0
+		var amount := page * maxf(wheel.factor, 0.1) / 8.0
+		if amount < 16.0:
+			amount = 16.0
+		if wheel.button_index == MOUSE_BUTTON_WHEEL_UP:
+			scroll.scroll_vertical -= int(round(amount))
+		else:
+			scroll.scroll_vertical += int(round(amount))
 
