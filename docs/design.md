@@ -3,7 +3,7 @@
 > 本文档是**本项目的产品与交接规格**。任何人接手开发，读完本文即可继续改代码。
 > 游戏设计通论（MDA、心流、技能原子、有意思的决定）另见 [game-design.md](game-design.md)。
 > 十关手感问题与逐关改进清单见 [improvements.md](improvements.md)。
-> 最后更新：2026-11-23（v1.7.0：各点一次 + 系统返回键）
+> 最后更新：2026-11-23（v1.7.1：首页卡片上也可滑动滚动）
 
 ## 1. 项目定位与理念
 
@@ -83,7 +83,7 @@ prefrontal-cortex-game/
 
 - **场景文件只是壳。** .tscn 里只有 `Control` 根节点 + 脚本引用；所有 UI 节点在 `_ready()` 里用代码构建。这延续了同仓库 DodgeShotLab 的做法，避免编辑器二进制状态和代码漂移，diff 干净。
 - **GameBase 提供公共外壳。** 深色背景（`#0d1220`）、左上角「< 返回」、右上角「?」玩法、居中标题。子类在 `_init()` 里设 `title_text` 和 `help_text`，并重写 `_build_game()`。打开玩法时暂停游戏树，避免计时在说明底下继续跑。系统返回键 / Esc：玩法打开时先关掉说明，否则回到 Hub；Hub 上连续按两次退出。答对/答错用 `_burst_feedback` 打出全屏大字 + 色闪，避免只靠一行小提示。记住关卡的游戏用同一套进度门：`_show_progress_gate` / `_on_progress_continue` / `_on_progress_fresh`（绿钮进最新一关，灰钮从头开始）。汉诺塔、追踪异色球、舒尔特方格、积木跨度、末项记、各点一次已接；反向色字复用同一套 UI 选简单/困难。规则变了、线索靶不需要进度门。新关照抄，不要另做一套选择 UI。改某一关后对照 [improvements.md](improvements.md) 该关一节更新现状和勾选。
-- **Hub 用数据驱动注册。** `GAMES` 数组是唯一注册点：`{title, func, group, scene, built}`。列表按 `group`（执行功能）分段；卡片两行（游戏名 + 练什么）。未实现的游戏 `built: false` → 置灰并在右侧标「即将推出」，功能说明仍可见；实现后翻成 `true` 并填 `scene` 路径即可。
+- **Hub 用数据驱动注册。** `GAMES` 数组是唯一注册点：`{title, func, group, scene, built}`。列表按 `group`（执行功能）分段；卡片两行（游戏名 + 练什么）。未实现的游戏 `built: false` → 置灰并在右侧标「即将推出」，功能说明仍可见；实现后翻成 `true` 并填 `scene` 路径即可。列表卡片是可滚动的 `HubCard`（不是普通 Button）：在卡片上拖过阈值会滚动列表，轻点才进关；鼠标滚轮 / 触控板平移同样有效。
 - **游戏间零耦合。** 每个游戏一个场景 + 一个脚本，返回即 `change_scene_to_file` 回 hub，无共享运行时状态。本地成绩各自存 `user://*.cfg`。
 - **Hub 检查 GitHub Release。** 进首页时请求 `releases/latest`，远程 tag 比 `application/config/version` 新则底部提示「有新版本」；点开浏览器下载页。失败静默；点 × 记下该 tag，不再提示。不自动安装。
 
