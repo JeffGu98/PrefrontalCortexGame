@@ -36,7 +36,9 @@ var score := 0
 var lives := LIVES
 var streak := 0
 var best_streak := 0
-var best_score := 0
+var best_score_easy := 0
+var best_score_hard := 0
+var timer_width := TIMER_WIDTH
 var trial_limit := TIME_START
 var trial_time_left := TIME_START
 var correct_color := ""
@@ -66,7 +68,7 @@ func _build_game() -> void:
 	_load_best()
 	_build_hud()
 	_build_color_buttons()
-	_layout_progress_gate()
+	_layout_board()
 	_show_gate()
 
 
@@ -89,11 +91,6 @@ func _build_hud() -> void:
 
 	stim_panel = Panel.new()
 	stim_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stim_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stim_panel.offset_left = 48
-	stim_panel.offset_right = -48
-	stim_panel.offset_top = 148
-	stim_panel.offset_bottom = 392
 	add_child(stim_panel)
 
 	_paint_panel(Color("#1a2740"))
@@ -110,23 +107,19 @@ func _build_hud() -> void:
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hint_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	hint_label.offset_top = 400
-	hint_label.offset_bottom = 432
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	add_child(hint_label)
 
 	timer_track = ColorRect.new()
 	timer_track.color = Color("#1a2740")
 	timer_track.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var vp := get_viewport_rect().size
-	timer_track.position = Vector2((vp.x - TIMER_WIDTH) / 2.0, 440)
-	timer_track.size = Vector2(TIMER_WIDTH, 12)
 	add_child(timer_track)
 
 	timer_bar = ColorRect.new()
 	timer_bar.color = Color("#8ab4ff")
 	timer_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	timer_bar.position = Vector2.ZERO
-	timer_bar.size = Vector2(TIMER_WIDTH, 12)
+	timer_bar.size = Vector2(timer_width, 12)
 	timer_track.add_child(timer_bar)
 
 
@@ -135,20 +128,10 @@ func _build_color_buttons() -> void:
 	choice_grid.columns = 2
 	choice_grid.add_theme_constant_override("h_separation", 20)
 	choice_grid.add_theme_constant_override("v_separation", 20)
-	var btn_w := 260.0
-	var btn_h := 160.0
-	var total_w := btn_w * 2.0 + 20.0
-	var total_h := btn_h * 2.0 + 20.0
-	var vp := get_viewport_rect().size
-	choice_grid.position = Vector2((vp.x - total_w) / 2.0, 468.0)
-	choice_grid.size = Vector2(total_w, total_h)
 	add_child(choice_grid)
 
 	for _i in range(COLORS.size()):
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(btn_w, btn_h)
-		btn.size = Vector2(btn_w, btn_h)
-		btn.pivot_offset = Vector2(btn_w, btn_h) * 0.5
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
 		btn.keep_pressed_outside = false
@@ -160,8 +143,56 @@ func _build_color_buttons() -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_RESIZED:
-		_layout_progress_gate()
+	if what == NOTIFICATION_RESIZED and stim_panel != null:
+		_layout_board()
+
+
+func _layout_board() -> void:
+	var vp := get_viewport_rect().size
+	var side_pad := clampf(vp.x * 0.06, 24.0, 48.0)
+	var stim_top := 148.0
+	var stim_h := clampf(vp.y * 0.24, 170.0, 244.0)
+	stim_panel.position = Vector2(side_pad, stim_top)
+	stim_panel.size = Vector2(maxf(vp.x - side_pad * 2.0, 200.0), stim_h)
+	var word_font := clampi(int(stim_h * 0.62), 96, 150)
+	word_label.add_theme_font_size_override("font_size", word_font)
+
+	var hint_top := stim_top + stim_h + 10.0
+	hint_label.offset_top = hint_top
+	hint_label.offset_bottom = hint_top + 48.0
+
+	timer_width = minf(TIMER_WIDTH, maxf(vp.x - 80.0, 180.0))
+	var bar_top := hint_top + 52.0
+	timer_track.position = Vector2((vp.x - timer_width) / 2.0, bar_top)
+	timer_track.size = Vector2(timer_width, 12.0)
+	timer_bar.size.y = 12.0
+	if phase == Phase.PLAY:
+		var ratio := clampf(trial_time_left / maxf(trial_limit, 0.01), 0.0, 1.0)
+		timer_bar.size.x = timer_width * ratio
+	else:
+		timer_bar.size.x = 0.0
+
+	var gap := 20.0
+	var grid_top := bar_top + 28.0
+	var avail_w := maxf(vp.x - side_pad * 2.0, 220.0)
+	var avail_h := maxf(vp.y - grid_top - 40.0, 220.0)
+	var btn_w := minf(260.0, (avail_w - gap) / 2.0)
+	var btn_h := clampf((avail_h - gap) / 2.0, 100.0, 160.0)
+	var total_w := btn_w * 2.0 + gap
+	var total_h := btn_h * 2.0 + gap
+	choice_grid.position = Vector2((vp.x - total_w) / 2.0, grid_top)
+	choice_grid.size = Vector2(total_w, total_h)
+	var btn_font := clampi(int(minf(btn_w, btn_h) * 0.32), 28, 44)
+	for btn in color_buttons:
+		btn.custom_minimum_size = Vector2(btn_w, btn_h)
+		btn.size = Vector2(btn_w, btn_h)
+		btn.pivot_offset = Vector2(btn_w, btn_h) * 0.5
+		btn.add_theme_font_size_override("font_size", btn_font)
+
+	if restart_button != null:
+		var ry := clampf(grid_top + 24.0, bar_top + 24.0, vp.y - 96.0)
+		restart_button.position = Vector2((vp.x - 220.0) / 2.0, ry)
+	_layout_progress_gate()
 
 
 func _show_gate() -> void:
@@ -307,7 +338,7 @@ func _new_trial() -> void:
 	waiting = false
 	word_label.modulate = Color.WHITE
 	trial_time_left = trial_limit
-	timer_bar.size.x = TIMER_WIDTH
+	timer_bar.size.x = timer_width
 	timer_bar.color = Color("#8ab4ff")
 	_set_hint(HINT_IDLE, Color("#7f8ba6"))
 
@@ -407,7 +438,7 @@ func _process(delta: float) -> void:
 		_apply_miss("超时")
 		return
 	var ratio := clampf(trial_time_left / maxf(trial_limit, 0.01), 0.0, 1.0)
-	timer_bar.size.x = TIMER_WIDTH * ratio
+	timer_bar.size.x = timer_width * ratio
 	timer_bar.color = Color("#ff5d73") if ratio < 0.25 else Color("#8ab4ff")
 
 
@@ -428,11 +459,23 @@ func _set_hint(text: String, color: Color) -> void:
 	hint_label.add_theme_color_override("font_color", color)
 
 
+func _current_best() -> int:
+	return best_score_easy if easy_mode else best_score_hard
+
+
+func _set_current_best(val: int) -> void:
+	if easy_mode:
+		best_score_easy = val
+	else:
+		best_score_hard = val
+
+
 func _end_game() -> void:
 	phase = Phase.OVER
 	game_over = true
 	waiting = true
 	trial_id += 1
+	choice_grid.visible = false
 	word_label.text = "结束"
 	word_label.modulate = Color.WHITE
 	word_label.add_theme_color_override("font_color", Color("#e8edff"))
@@ -440,19 +483,25 @@ func _end_game() -> void:
 	timer_bar.size.x = 0.0
 	_update_hud()
 
-	var is_best := score > best_score
+	var cur_best := _current_best()
+	var is_best := score > cur_best
 	if is_best:
-		best_score = score
+		cur_best = score
+		_set_current_best(cur_best)
 		_save_best()
+	_mark_session_completed()
+	var mode_tag := "简单" if easy_mode else "困难"
 	var parts: PackedStringArray = ["最佳连击 %d" % best_streak]
-	if best_score > 0:
-		parts.append("历史最佳 %d" % best_score)
+	if cur_best > 0:
+		parts.append("%s历史最佳 %d" % [mode_tag, cur_best])
 	if is_best and score > 0:
 		parts.append("新纪录")
 	_set_hint(" · ".join(parts), Color("#ffd75d"))
 
 	if restart_button == null:
-		restart_button = _make_restart_button(_restart, 980.0)
+		var vp := get_viewport_rect().size
+		var ry := clampf(choice_grid.position.y + 24.0, timer_track.position.y + 36.0, vp.y - 96.0)
+		restart_button = _make_restart_button(_restart, ry)
 
 
 func _restart() -> void:
@@ -462,10 +511,14 @@ func _restart() -> void:
 func _load_best() -> void:
 	var config := ConfigFile.new()
 	if config.load(BEST_PATH) == OK:
-		best_score = int(config.get_value("best", "score", 0))
+		var legacy := int(config.get_value("best", "score", 0))
+		best_score_easy = int(config.get_value("best", "easy_score", legacy))
+		best_score_hard = int(config.get_value("best", "hard_score", 0))
 
 
 func _save_best() -> void:
 	var config := ConfigFile.new()
-	config.set_value("best", "score", best_score)
+	config.set_value("best", "easy_score", best_score_easy)
+	config.set_value("best", "hard_score", best_score_hard)
+	config.set_value("best", "score", maxi(best_score_easy, best_score_hard))
 	config.save(BEST_PATH)

@@ -152,8 +152,6 @@ func _on_progress_fresh() -> void:
 	if phase != Phase.GATE:
 		return
 	ball_count = START_BALLS
-	latest_balls = START_BALLS
-	_save_progress()
 	_hide_gate()
 	_start_round()
 
@@ -289,6 +287,7 @@ func _confirm() -> void:
 			_remember_level()
 		_set_hint("全对  +%d" % SCORE_ALL, Color("#4ade80"))
 		_burst_feedback("全对  +%d" % SCORE_ALL, Color("#4ade80"))
+		_mark_session_completed()
 	else:
 		streak = 0
 		lives -= 1
@@ -404,6 +403,7 @@ func _end_game() -> void:
 	if is_best:
 		best_score = score
 		_save_progress()
+	_mark_session_completed()
 	var suffix := " · 新纪录！" if is_best else ""
 	if best_score > 0 and not is_best:
 		suffix = " · 最佳 %d" % best_score
@@ -418,7 +418,7 @@ func _restart() -> void:
 
 
 func _remember_level() -> void:
-	latest_balls = clampi(ball_count, START_BALLS, MAX_BALLS)
+	latest_balls = clampi(maxi(latest_balls, ball_count), START_BALLS, MAX_BALLS)
 	_save_progress()
 
 

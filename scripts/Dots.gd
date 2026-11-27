@@ -532,6 +532,7 @@ func _end_round() -> void:
 	if is_best:
 		best_score = score
 		_save_best()
+	_mark_session_completed()
 	var suffix := " · 新纪录！" if is_best else ""
 	if best_score > 0 and not is_best:
 		suffix = " · 最佳 %d" % best_score

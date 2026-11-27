@@ -103,7 +103,7 @@ func _build_list() -> void:
 		list.add_child(_make_game_button(game))
 
 
-func _built_games() -> Array:
+static func built_games() -> Array:
 	# Daily pool = every built game in GAMES order (末项记 / 各点一次 / 规则变了 / … auto-join when built:true).
 	var out: Array = []
 	for game in GAMES:
@@ -112,15 +112,15 @@ func _built_games() -> Array:
 	return out
 
 
-func _today_key() -> String:
+static func today_key() -> String:
 	var d := Time.get_datetime_dict_from_system()
 	return "%04d-%02d-%02d" % [int(d["year"]), int(d["month"]), int(d["day"])]
 
 
-func _daily_index(count: int) -> int:
+static func daily_index(count: int) -> int:
 	if count <= 0:
 		return 0
-	var key := _today_key()
+	var key := today_key()
 	var h := 0
 	for i in range(key.length()):
 		h = (h * 31 + key.unicode_at(i)) & 0x7fffffff
@@ -129,25 +129,59 @@ func _daily_index(count: int) -> int:
 	return h % count
 
 
-func _daily_game() -> Dictionary:
-	var built := _built_games()
+static func daily_game() -> Dictionary:
+	var built := built_games()
 	if built.is_empty():
 		return {}
-	return built[_daily_index(built.size())]
+	return built[daily_index(built.size())]
 
 
-func _daily_played_today() -> bool:
+static func daily_scene_path() -> String:
+	return str(daily_game().get("scene", ""))
+
+
+static func is_daily_completed_today() -> bool:
 	var config := ConfigFile.new()
 	if config.load(DAILY_PATH) != OK:
 		return false
-	return str(config.get_value("daily", "played_date", "")) == _today_key()
+	if str(config.get_value("daily", "played_date", "")) != today_key():
+		return false
+	var recorded_scene := str(config.get_value("daily", "played_scene", ""))
+	if recorded_scene.is_empty():
+		return true
+	return recorded_scene == daily_scene_path()
 
 
-func _mark_daily_played() -> void:
+static func mark_daily_completed(scene_path: String) -> bool:
+	var target := daily_scene_path()
+	if scene_path.is_empty() or scene_path != target:
+		return false
 	var config := ConfigFile.new()
 	config.load(DAILY_PATH)
-	config.set_value("daily", "played_date", _today_key())
+	config.set_value("daily", "played_date", today_key())
+	config.set_value("daily", "played_scene", scene_path)
 	config.save(DAILY_PATH)
+	return true
+
+
+func _built_games() -> Array:
+	return built_games()
+
+
+func _today_key() -> String:
+	return today_key()
+
+
+func _daily_index(count: int) -> int:
+	return daily_index(count)
+
+
+func _daily_game() -> Dictionary:
+	return daily_game()
+
+
+func _daily_played_today() -> bool:
+	return is_daily_completed_today()
 
 
 func _make_daily_card() -> HubCard:
@@ -186,7 +220,7 @@ func _make_daily_card() -> HubCard:
 		var done := Label.new()
 		done.text = "今日已练"
 		done.add_theme_font_size_override("font_size", 14)
-		done.add_theme_color_override("font_color", Color("#7f8ba6"))
+		done.add_theme_color_override("font_color", Color("#4ade80"))
 		done.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		head.add_child(done)
 
@@ -210,7 +244,6 @@ func _make_daily_card() -> HubCard:
 
 
 func _open_daily(scene_path: String) -> void:
-	_mark_daily_played()
 	_open_game(scene_path)
 
 

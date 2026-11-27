@@ -185,8 +185,6 @@ func _on_progress_continue() -> void:
 func _on_progress_fresh() -> void:
 	if phase != Phase.GATE:
 		return
-	latest_size = MIN_SIZE
-	_save_progress()
 	_hide_gate()
 	_start_board(MIN_SIZE)
 
@@ -331,9 +329,10 @@ func _finish() -> void:
 
 	status_label.text = "%s 完成 %.2f 秒（点错 %d）%s" % [_size_label(), elapsed, mistakes, suffix]
 	status_label.add_theme_color_override("font_color", Color("#ffd75d") if is_best else Color("#4ade80"))
+	_mark_session_completed()
 	if grid_size < MAX_SIZE:
 		var nxt := grid_size + 1
-		latest_size = nxt
+		latest_size = maxi(latest_size, nxt)
 		_save_progress()
 		_burst_feedback(_size_label(), Color("#ffd75d") if is_best else Color("#4ade80"))
 		var id2 := board_id

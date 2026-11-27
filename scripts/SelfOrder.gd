@@ -444,6 +444,7 @@ func _end_game() -> void:
 		best_score = score
 	best_set = maxi(best_set, session_best_set)
 	_save_best()
+	_mark_session_completed()
 	_update_hud()
 	var parts: PackedStringArray = ["时间到", "本局最多一次点完 %d 个" % session_best_set]
 	if best_score > 0:

@@ -279,6 +279,14 @@ func _on_help_dim_input(event: InputEvent) -> void:
 		_hide_help()
 
 
+func _mark_session_completed() -> void:
+	if scene_file_path.is_empty():
+		return
+	var hub_script := load("res://scripts/Hub.gd")
+	if hub_script != null:
+		hub_script.mark_daily_completed(scene_file_path)
+
+
 func _go_back() -> void:
 	if _leaving:
 		return

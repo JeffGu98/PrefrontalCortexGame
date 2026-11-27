@@ -177,8 +177,6 @@ func _on_progress_fresh() -> void:
 	if phase != Phase.PICK:
 		return
 	disk_n = MIN_DISKS
-	latest_disks = MIN_DISKS
-	_save_progress()
 	_hide_gate()
 	_start_level()
 
@@ -369,6 +367,7 @@ func _check_win() -> void:
 	if is_best:
 		best_score = score
 		_save_progress()
+	_mark_session_completed()
 	var tone := Color("#4ade80") if moves <= optimal else Color("#ffd75d")
 	var hint := "过关 +%d%s" % [gained, extra]
 	if path_text != "":
@@ -442,7 +441,7 @@ func _next_or_restart() -> void:
 
 
 func _remember_level() -> void:
-	latest_disks = clampi(disk_n, MIN_DISKS, MAX_DISKS)
+	latest_disks = clampi(maxi(latest_disks, disk_n), MIN_DISKS, MAX_DISKS)
 	_save_progress()
 
 

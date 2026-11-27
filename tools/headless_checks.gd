@@ -13,6 +13,7 @@ func _run_all() -> void:
 	failed += _check_self_order_logic()
 	failed += await _check_self_order_play()
 	failed += await _check_hub_scroll_vs_tap()
+	failed += await _check_p0_fixes()
 	if failed == 0:
 		print("HEADLESS_CHECKS_OK")
 		quit(0)
@@ -370,3 +371,136 @@ func _card_wheel(card: Control, pos: Vector2, down: bool) -> void:
 	ev.global_position = pos
 	ev.factor = 1.0
 	card._gui_input(ev)
+
+
+func _check_p0_fixes() -> int:
+	var failed := 0
+	# 1. RuleShift choice piles must shuffle and preserve exact 1-dimension match.
+	var rs_script := load("res://scripts/RuleShift.gd")
+	if rs_script == null:
+		print("FAIL load RuleShift.gd")
+		return 1
+	var seen_piles: Dictionary = {}
+	var stim := {"color": 1, "shape": 2, "count": 0}
+	for _k in range(30):
+		var built: Dictionary = rs_script.build_trial_choices(stim, rs_script.DIM_COLOR)
+		var choices: Array = built["choices"]
+		var cp := int(built["correct_pile"])
+		if choices.size() != 3 or cp < 0 or cp > 2:
+			print("FAIL RuleShift invalid trial")
+			failed += 1
+			break
+		seen_piles[cp] = true
+		if int(choices[cp]["color"]) != int(stim["color"]):
+			print("FAIL RuleShift correct_pile mismatch")
+			failed += 1
+			break
+		for c in choices:
+			var matches := 0
+			if int(c["color"]) == int(stim["color"]):
+				matches += 1
+			if int(c["shape"]) == int(stim["shape"]):
+				matches += 1
+			if int(c["count"]) == int(stim["count"]):
+				matches += 1
+			if matches != 1:
+				print("FAIL RuleShift choice match count=%d" % matches)
+				failed += 1
+				break
+	if seen_piles.size() < 2:
+		print("FAIL RuleShift piles did not shuffle")
+		failed += 1
+
+	# 2. Daily completion: opening daily card must not mark completed; real completion must.
+	var hub_script := load("res://scripts/Hub.gd")
+	if hub_script == null:
+		print("FAIL load Hub.gd for P0 check")
+		return failed + 1
+	var daily_scene: String = hub_script.daily_scene_path()
+	if daily_scene.is_empty():
+		print("FAIL daily_scene_path empty")
+		failed += 1
+	var daily_cfg_backup := ""
+	if FileAccess.file_exists(hub_script.DAILY_PATH):
+		daily_cfg_backup = FileAccess.get_file_as_string(hub_script.DAILY_PATH)
+	if FileAccess.file_exists(hub_script.DAILY_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(hub_script.DAILY_PATH))
+	var hub_packed := load("res://scenes/Hub.tscn")
+	var hub: Node = hub_packed.instantiate()
+	root.add_child(hub)
+	await process_frame
+	hub.open_intercept = func(_p: String) -> void:
+		pass
+	hub._open_daily(daily_scene)
+	if hub_script.is_daily_completed_today():
+		print("FAIL _open_daily marked daily completed prematurely")
+		failed += 1
+	if not hub_script.mark_daily_completed(daily_scene):
+		print("FAIL mark_daily_completed returned false for today scene")
+		failed += 1
+	if not hub_script.is_daily_completed_today():
+		print("FAIL is_daily_completed_today false after real completion")
+		failed += 1
+	hub.queue_free()
+	await process_frame
+	if daily_cfg_backup.is_empty():
+		if FileAccess.file_exists(hub_script.DAILY_PATH):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(hub_script.DAILY_PATH))
+	else:
+		var f := FileAccess.open(hub_script.DAILY_PATH, FileAccess.WRITE)
+		if f != null:
+			f.store_string(daily_cfg_backup)
+			f.close()
+
+	# 3. Stroop responsive layout & split easy/hard best scores.
+	var stroop_packed := load("res://scenes/Stroop.tscn")
+	var stroop: Node = stroop_packed.instantiate()
+	root.add_child(stroop)
+	await process_frame
+	if stroop.stim_panel.size.y > 260.0 or stroop.stim_panel.position.y + stroop.stim_panel.size.y >= stroop.choice_grid.position.y:
+		print("FAIL Stroop stim_panel overlaps choice_grid")
+		failed += 1
+	stroop.easy_mode = true
+	stroop._set_current_best(120)
+	stroop.easy_mode = false
+	stroop._set_current_best(45)
+	if stroop.best_score_easy != 120 or stroop.best_score_hard != 45:
+		print("FAIL Stroop split best scores")
+		failed += 1
+	stroop.queue_free()
+	await process_frame
+
+	# 4. Fresh start must not erase saved highest progress in Schulte / Track / Hanoi.
+	for spec in [
+		{"scene": "res://scenes/Schulte.tscn", "field": "latest_size", "val": 7, "gate_phase": 0, "cfg": "user://schulte_best.cfg"},
+		{"scene": "res://scenes/Track.tscn", "field": "latest_balls", "val": 10, "gate_phase": 0, "cfg": "user://track_best.cfg"},
+		{"scene": "res://scenes/Hanoi.tscn", "field": "latest_disks", "val": 5, "gate_phase": 0, "cfg": "user://hanoi_best.cfg"},
+	]:
+		var cfg_path: String = spec["cfg"]
+		var cfg_backup := ""
+		var had_cfg := FileAccess.file_exists(cfg_path)
+		if had_cfg:
+			cfg_backup = FileAccess.get_file_as_string(cfg_path)
+		var p := load(spec["scene"])
+		var g: Node = p.instantiate()
+		root.add_child(g)
+		await process_frame
+		g.set(spec["field"], spec["val"])
+		g.set("phase", spec["gate_phase"])
+		g._on_progress_fresh()
+		if int(g.get(spec["field"])) != int(spec["val"]):
+			print("FAIL fresh start overwrote %s in %s" % [spec["field"], spec["scene"]])
+			failed += 1
+		g.queue_free()
+		await process_frame
+		if had_cfg:
+			var fw := FileAccess.open(cfg_path, FileAccess.WRITE)
+			if fw != null:
+				fw.store_string(cfg_backup)
+				fw.close()
+		elif FileAccess.file_exists(cfg_path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(cfg_path))
+
+	if failed == 0:
+		print("P0_FIXES_OK")
+	return failed

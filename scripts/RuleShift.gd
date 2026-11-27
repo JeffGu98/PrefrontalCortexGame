@@ -188,8 +188,9 @@ func _new_trial() -> void:
 		return
 	waiting = false
 	stim = _random_card()
-	choices = _build_choices(stim)
-	correct_pile = rule  # pile i matches stim only on dimension i
+	var built := build_trial_choices(stim, rule)
+	choices = built["choices"]
+	correct_pile = int(built["correct_pile"])
 	stim_draw.card = stim
 	stim_draw.queue_redraw()
 	for i in range(3):
@@ -206,9 +207,10 @@ func _random_card() -> Dictionary:
 	return _card(randi() % 3, randi() % 3, randi() % 3)
 
 
-func _build_choices(s: Dictionary) -> Array:
-	# Three piles: each matches stim on exactly one dimension.
-	var out: Array = []
+static func build_trial_choices(s: Dictionary, active_rule: int) -> Dictionary:
+	# Three piles: each matches stim on exactly one dimension, then shuffle pile order
+	# so left/middle/right never stay bound to color/shape/count.
+	var by_dim: Array = []
 	var keys := ["color", "shape", "count"]
 	for dim in range(3):
 		var c := {"color": int(s["color"]), "shape": int(s["shape"]), "count": int(s["count"])}
@@ -221,8 +223,21 @@ func _build_choices(s: Dictionary) -> Array:
 				if v != cur:
 					vals.append(v)
 			c[keys[other]] = vals[randi() % vals.size()]
-		out.append(c)
-	return out
+		by_dim.append(c)
+	var order: Array[int] = [DIM_COLOR, DIM_SHAPE, DIM_COUNT]
+	order.shuffle()
+	var out: Array = []
+	var correct := 0
+	for i in range(3):
+		var dim := order[i]
+		out.append(by_dim[dim])
+		if dim == active_rule:
+			correct = i
+	return {"choices": out, "correct_pile": correct, "dims": order}
+
+
+func _build_choices(s: Dictionary) -> Array:
+	return build_trial_choices(s, rule)["choices"]
 
 
 func _on_pick(pile: int) -> void:
@@ -339,6 +354,7 @@ func _end_game() -> void:
 	if is_best:
 		best_score = score
 		_save_best()
+	_mark_session_completed()
 	_update_hud()
 	var parts: PackedStringArray = ["时间到"]
 	if best_score > 0:

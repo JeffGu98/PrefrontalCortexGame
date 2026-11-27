@@ -334,6 +334,7 @@ func _end_game() -> void:
 		best_score = score
 	best_span = maxi(best_span, session_best_span)
 	_save_best()
+	_mark_session_completed()
 	_update_hud()
 	var parts: PackedStringArray = ["时间到", "本局最长跨度 %d" % session_best_span]
 	if best_score > 0:
