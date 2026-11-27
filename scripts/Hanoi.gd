@@ -286,6 +286,7 @@ func _on_peg_pressed(peg: int) -> void:
 		return
 	var moving: int = pegs[selected].back()
 	if not pegs[peg].is_empty() and moving > pegs[peg].back():
+		_play_sfx("bad")
 		_shake_disk(moving)
 		_set_hint("大盘不能压小盘", Color("#ff5d73"))
 		return
@@ -294,6 +295,7 @@ func _on_peg_pressed(peg: int) -> void:
 	selected = -1
 	moves += 1
 	animating = true
+	_play_sfx("tap")
 	_layout_disks(true)
 	board.queue_redraw()
 	_update_hud()

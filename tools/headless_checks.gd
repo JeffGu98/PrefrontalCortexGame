@@ -14,6 +14,7 @@ func _run_all() -> void:
 	failed += await _check_self_order_play()
 	failed += await _check_hub_scroll_vs_tap()
 	failed += await _check_p0_fixes()
+	failed += await _check_p1_features()
 	if failed == 0:
 		print("HEADLESS_CHECKS_OK")
 		quit(0)
@@ -25,15 +26,18 @@ func _run_all() -> void:
 func _check_versions() -> int:
 	var failed := 0
 	var project := str(ProjectSettings.get_setting("application/config/version", ""))
-	if project != "1.8.0":
+	if project != "1.8.1":
 		print("FAIL version project=%s" % project)
 		failed += 1
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
-	if presets.find('version/name="1.8.0"') < 0 or presets.find("version/code=180") < 0:
+	if presets.find('version/name="1.8.1"') < 0 or presets.find("version/code=181") < 0:
 		print("FAIL export_presets version")
 		failed += 1
-	if presets.find('export_path="build/PrefrontalCortexGame-1.8.0.apk"') < 0:
+	if presets.find('export_path="build/PrefrontalCortexGame-1.8.1.apk"') < 0:
 		print("FAIL export_path")
+		failed += 1
+	if presets.find('include_filter="assets/schulte/*"') >= 0:
+		print("FAIL stale assets/schulte include_filter still in export_presets.cfg")
 		failed += 1
 	for key in ["keystore/debug=", "keystore/release=", "keystore/debug_password=", "keystore/release_password="]:
 		if presets.find('%s"' % key) >= 0:
@@ -503,4 +507,112 @@ func _check_p0_fixes() -> int:
 
 	if failed == 0:
 		print("P0_FIXES_OK")
+	return failed
+
+
+func _backup_cfg(path: String) -> Dictionary:
+	var had := FileAccess.file_exists(path)
+	var content := FileAccess.get_file_as_string(path) if had else ""
+	return {"path": path, "had": had, "content": content}
+
+
+func _restore_cfg(snap: Dictionary) -> void:
+	var path: String = snap["path"]
+	if bool(snap["had"]):
+		var fw := FileAccess.open(path, FileAccess.WRITE)
+		if fw != null:
+			fw.store_string(str(snap["content"]))
+			fw.close()
+	elif FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func _check_p1_features() -> int:
+	var failed := 0
+
+	# 1. Global mute setting roundtrip.
+	var base_script := load("res://scripts/GameBase.gd")
+	if base_script == null:
+		print("FAIL load GameBase.gd")
+		return 1
+	var settings_snap := _backup_cfg(base_script.SETTINGS_PATH)
+	base_script.set_muted(true)
+	if not base_script.is_muted():
+		print("FAIL GameBase.set_muted(true) did not persist")
+		failed += 1
+	base_script.set_muted(false)
+	if base_script.is_muted():
+		print("FAIL GameBase.set_muted(false) did not persist")
+		failed += 1
+	_restore_cfg(settings_snap)
+
+	# 2. Track move duration curve: 6 balls -> 4.0s, 12+ balls -> 7.0s.
+	var track_script := load("res://scripts/Track.gd")
+	if track_script == null:
+		print("FAIL load Track.gd")
+		return failed + 1
+	var d6: float = track_script.move_duration_for(6)
+	var d12: float = track_script.move_duration_for(12)
+	var d14: float = track_script.move_duration_for(14)
+	if absf(d6 - 4.0) > 0.01 or absf(d12 - 7.0) > 0.01 or absf(d14 - 7.0) > 0.01:
+		print("FAIL Track move_duration_for d6=%.2f d12=%.2f d14=%.2f" % [d6, d12, d14])
+		failed += 1
+
+	# 3. Hub per-game summary stat formatting.
+	var hub_script := load("res://scripts/Hub.gd")
+	var stroop_snap := _backup_cfg("user://stroop_best.cfg")
+	var schulte_snap := _backup_cfg("user://schulte_best.cfg")
+	var daily_snap := _backup_cfg(hub_script.DAILY_PATH)
+	var c1 := ConfigFile.new()
+	c1.set_value("best", "easy_score", 95)
+	c1.set_value("best", "hard_score", 60)
+	c1.save("user://stroop_best.cfg")
+	var st_stroop: String = hub_script.game_stat_text("反向色字")
+	if st_stroop.find("95") < 0 or st_stroop.find("60") < 0:
+		print("FAIL Hub.game_stat_text(反向色字)=%s" % st_stroop)
+		failed += 1
+	var c2 := ConfigFile.new()
+	c2.set_value("best", "size", 6)
+	c2.set_value("best", "time_6", 18.4)
+	c2.save("user://schulte_best.cfg")
+	var st_schulte: String = hub_script.game_stat_text("舒尔特方格")
+	if st_schulte.find("6×6") < 0 or st_schulte.find("18.4") < 0:
+		print("FAIL Hub.game_stat_text(舒尔特方格)=%s" % st_schulte)
+		failed += 1
+
+	# 4. Stroop end summary card & switch-difficulty button flow.
+	var stroop_packed := load("res://scenes/Stroop.tscn")
+	var stroop: Node = stroop_packed.instantiate()
+	root.add_child(stroop)
+	await process_frame
+	stroop._on_progress_continue()
+	stroop.score = 80
+	stroop.correct_count = 4
+	stroop.total_trials = 5
+	stroop.rt_sum = 3.2
+	stroop.rt_count = 4
+	stroop._end_game()
+	if not bool(stroop._summary_panel.visible) or not bool(stroop._summary_secondary_btn.visible):
+		print("FAIL Stroop summary card or switch-difficulty button not visible")
+		failed += 1
+	stroop._on_summary_secondary()
+	if int(stroop.phase) != stroop.Phase.GATE or bool(stroop._summary_panel.visible):
+		print("FAIL Stroop switch-difficulty did not return to GATE")
+		failed += 1
+	stroop.queue_free()
+	await process_frame
+	_restore_cfg(stroop_snap)
+	_restore_cfg(schulte_snap)
+	_restore_cfg(daily_snap)
+
+	# 5. Deprecated Schulte animal silhouette assets and generator tool removed.
+	if DirAccess.dir_exists_absolute(ProjectSettings.globalize_path("res://assets/schulte")):
+		print("FAIL deprecated res://assets/schulte still exists")
+		failed += 1
+	if FileAccess.file_exists("res://tools/make_silhouette.gd"):
+		print("FAIL deprecated res://tools/make_silhouette.gd still exists")
+		failed += 1
+
+	if failed == 0:
+		print("P1_FEATURES_OK")
 	return failed

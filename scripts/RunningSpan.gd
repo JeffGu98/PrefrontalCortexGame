@@ -286,6 +286,7 @@ func _on_pad(digit: int) -> void:
 		if input_i >= target.size():
 			_on_trial_correct()
 		else:
+			_play_sfx("tap")
 			_set_hint("%d / %d" % [input_i, target.size()], Color("#4ade80"))
 			await get_tree().create_timer(0.12).timeout
 			if phase == Phase.INPUT:

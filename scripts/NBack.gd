@@ -38,6 +38,10 @@ var answered := false
 var is_match := false
 var scoring_done := 0
 var miss_count := 0
+var correct_count := 0
+var max_n_reached := START_N
+var rt_sum := 0.0
+var rt_count := 0
 
 var score_label: Label
 var lives_label: Label
@@ -221,6 +225,7 @@ func _layout_board() -> void:
 	if brief_panel != null:
 		brief_panel.position = grid.position
 		brief_panel.size = grid.size
+	_layout_summary_card()
 
 
 func _start_round() -> void:
@@ -229,6 +234,10 @@ func _start_round() -> void:
 	wrong_streak = 0
 	scoring_done = 0
 	miss_count = 0
+	correct_count = 0
+	max_n_reached = START_N
+	rt_sum = 0.0
+	rt_count = 0
 	n_level = START_N
 	history.clear()
 	phase = Phase.READY
@@ -236,9 +245,8 @@ func _start_round() -> void:
 	showing = false
 	answered = false
 	_dim_all()
-	if restart_button != null:
-		restart_button.queue_free()
-		restart_button = null
+	_hide_summary_card()
+	restart_button = null
 	brief_label.text = _brief_text(n_level)
 	var ready := "先看说明，再开始"
 	if best_score > 0:
@@ -304,6 +312,8 @@ func _on_answer(said_match: bool) -> void:
 	if phase != Phase.PLAY or answered or not _is_scoring():
 		return
 	answered = true
+	rt_sum += maxf(0.0, stim_elapsed)
+	rt_count += 1
 	if said_match == is_match:
 		_hit()
 	else:
@@ -314,16 +324,21 @@ func _hit() -> void:
 	streak += 1
 	wrong_streak = 0
 	score += SCORE_HIT
+	correct_count += 1
 	scoring_done += 1
+	max_n_reached = maxi(max_n_reached, n_level)
 	_paint_cell(cells[current_pos], OK_CELL)
 	cells[current_pos].modulate = Color.WHITE
 	_set_hint("对  +%d" % SCORE_HIT, Color("#4ade80"))
 	if streak >= UP_STREAK and n_level < MAX_N:
 		n_level += 1
+		max_n_reached = maxi(max_n_reached, n_level)
 		streak = 0
 		wrong_streak = 0
 		_set_hint("现在要比往前第 %d 个" % n_level, Color("#ffd75d"))
 		_burst_feedback("升到 %d-Back\n记住往前第 %d 个" % [n_level, n_level], Color("#ffd75d"))
+	else:
+		_play_sfx("ok")
 	# 格子反馈优先；升阶仍用短提示
 	_update_hud()
 	if scoring_done >= TRIAL_LIMIT:
@@ -335,6 +350,7 @@ func _miss(reason: String) -> void:
 	wrong_streak += 1
 	miss_count += 1
 	scoring_done += 1
+	_play_sfx("bad")
 	_paint_cell(cells[current_pos], BAD_CELL)
 	cells[current_pos].modulate = Color.WHITE
 	_set_hint(reason, Color("#ff5d73"))
@@ -408,16 +424,21 @@ func _update_hud() -> void:
 		progress_label.text = "升阶 %d／%d　连错降阶 %d／%d" % [streak, UP_STREAK, wrong_streak, DOWN_STREAK]
 	var scoring := phase == Phase.PLAY and _is_scoring() and not answered
 	var ready := phase == Phase.READY
+	var playing := phase == Phase.PLAY
 	if same_btn != null:
-		same_btn.visible = not ready
-		diff_btn.visible = not ready
+		same_btn.visible = playing
+		diff_btn.visible = playing
 		start_btn.visible = ready
 		same_btn.modulate = Color.WHITE if scoring else Color(1, 1, 1, 0.4)
 		diff_btn.modulate = Color.WHITE if scoring else Color(1, 1, 1, 0.4)
+	if grid != null:
+		grid.visible = phase != Phase.OVER
+	if hint_label != null:
+		hint_label.visible = phase != Phase.OVER
 	if brief_panel != null:
 		brief_panel.visible = ready
 	if timer_track != null:
-		timer_track.visible = phase == Phase.PLAY
+		timer_track.visible = playing
 
 
 func _set_hint(text: String, color: Color) -> void:
@@ -435,13 +456,16 @@ func _end_game() -> void:
 		best_score = score
 		_save_best()
 	_mark_session_completed()
-	var suffix := " · 新纪录！" if is_best else ""
-	if best_score > 0 and not is_best:
-		suffix = " · 最佳 %d" % best_score
-	_set_hint("结束 · 得分 %d%s" % [score, suffix], Color("#ffd75d"))
 	_update_hud()
-	if restart_button == null:
-		restart_button = _make_restart_button(_restart, same_btn.position.y - 84.0)
+	var acc := int(round(100.0 * float(correct_count) / float(maxi(scoring_done, 1)))) if scoring_done > 0 else 0
+	var rt_str := ("%.2f 秒" % (rt_sum / float(rt_count))) if rt_count > 0 else "—"
+	var lines := PackedStringArray([
+		"得分 %d　最高 %d-Back" % [score, max_n_reached],
+		"正确率 %d%%（%d/%d） · 平均反应 %s" % [acc, correct_count, scoring_done, rt_str],
+		"历史最佳 %d" % best_score,
+	])
+	var heading := "本局结束 · 新纪录" if is_best and score > 0 else "本局结束"
+	restart_button = _show_summary_card(heading, lines, "再来一局", _restart)
 
 
 func _restart() -> void:

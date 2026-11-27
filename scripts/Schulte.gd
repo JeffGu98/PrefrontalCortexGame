@@ -282,6 +282,7 @@ func _on_cell_pressed(btn: Button) -> void:
 
 
 func _mark_correct(btn: Button) -> void:
+	_play_sfx("tap")
 	btn.disabled = true
 	btn.modulate = Color("#4ade80")
 	btn.pivot_offset = btn.size * 0.5
@@ -293,6 +294,7 @@ func _mark_correct(btn: Button) -> void:
 
 
 func _flash_wrong(btn: Button) -> void:
+	_play_sfx("bad")
 	btn.modulate = Color(1.0, 0.35, 0.35)
 	var tween := create_tween()
 	tween.tween_property(btn, "modulate", Color.WHITE, 0.3)

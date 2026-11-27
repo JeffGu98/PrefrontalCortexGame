@@ -320,6 +320,7 @@ func _on_tap(token_id: int) -> void:
 		return
 	var pts := 4
 	score += pts
+	_play_sfx("tap")
 	_set_hint("已点 %d / %d  ·  +%d" % [picked.size(), set_size, pts], Color("#4ade80"))
 	_update_hud()
 	_after_correct_pick()

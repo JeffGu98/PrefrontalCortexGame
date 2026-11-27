@@ -240,6 +240,7 @@ func _on_tap(index: int) -> void:
 		if input_i >= sequence.size():
 			_on_trial_correct()
 		else:
+			_play_sfx("tap")
 			_set_hint("%d / %d" % [input_i, sequence.size()], Color("#4ade80"))
 			await get_tree().create_timer(0.12).timeout
 			if phase == Phase.INPUT:

@@ -36,6 +36,10 @@ var score := 0
 var lives := LIVES
 var streak := 0
 var best_streak := 0
+var correct_count := 0
+var total_trials := 0
+var rt_sum := 0.0
+var rt_count := 0
 var best_score_easy := 0
 var best_score_hard := 0
 var timer_width := TIMER_WIDTH
@@ -189,9 +193,6 @@ func _layout_board() -> void:
 		btn.pivot_offset = Vector2(btn_w, btn_h) * 0.5
 		btn.add_theme_font_size_override("font_size", btn_font)
 
-	if restart_button != null:
-		var ry := clampf(grid_top + 24.0, bar_top + 24.0, vp.y - 96.0)
-		restart_button.position = Vector2((vp.x - 220.0) / 2.0, ry)
 	_layout_progress_gate()
 
 
@@ -203,9 +204,8 @@ func _show_gate() -> void:
 	timer_track.visible = false
 	hint_label.visible = false
 	choice_grid.visible = false
-	if restart_button != null:
-		restart_button.queue_free()
-		restart_button = null
+	_hide_summary_card()
+	restart_button = null
 	_show_progress_gate(
 		"这一局要简单还是困难？\n简单：选项灰底黑字，位置仍会变。\n困难：选项底色是干扰。",
 		"简单",
@@ -238,20 +238,23 @@ func _on_progress_fresh() -> void:
 
 
 func _start_play() -> void:
+	_hide_summary_card()
+	restart_button = null
 	_hide_gate()
 	phase = Phase.PLAY
 	score = 0
 	lives = LIVES
 	streak = 0
 	best_streak = 0
+	correct_count = 0
+	total_trials = 0
+	rt_sum = 0.0
+	rt_count = 0
 	trial_limit = TIME_START
 	congruent = false
 	game_over = false
 	waiting = false
 	trial_id += 1
-	if restart_button != null:
-		restart_button.queue_free()
-		restart_button = null
 	_new_trial()
 
 
@@ -368,7 +371,11 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 	waiting = true
 	_set_choices_clickable(false)
 	_press_bounce(btn)
+	total_trials += 1
+	rt_sum += maxf(0.0, trial_limit - trial_time_left)
+	rt_count += 1
 	if color_name == correct_color:
+		correct_count += 1
 		streak += 1
 		best_streak = maxi(best_streak, streak)
 		if streak > 0 and streak % SPEED_EVERY == 0:
@@ -379,6 +386,8 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 		_set_hint("+%d" % pts, Color("#4ade80"))
 		if trial_limit > BURST_CUTOFF:
 			_burst_feedback("+%d" % pts, Color("#4ade80"))
+		else:
+			_play_sfx("ok")
 		word_label.modulate = Color("#4ade80")
 		_update_hud()
 		_begin_gap()
@@ -388,6 +397,8 @@ func _on_color_pressed(color_name: String, btn: Button) -> void:
 
 
 func _apply_miss(reason: String) -> void:
+	if reason == "超时":
+		total_trials += 1
 	streak = 0
 	trial_limit = minf(TIME_START, trial_limit + TIME_RECOVER)
 	lives -= 1
@@ -396,6 +407,8 @@ func _apply_miss(reason: String) -> void:
 	_set_hint(miss_text, Color("#ff5d73"))
 	if trial_limit > BURST_CUTOFF:
 		_burst_feedback(miss_text, Color("#ff5d73"))
+	else:
+		_play_sfx("bad")
 	_update_hud()
 	if lives <= 0:
 		_end_game()
@@ -475,6 +488,9 @@ func _end_game() -> void:
 	game_over = true
 	waiting = true
 	trial_id += 1
+	stim_panel.visible = false
+	timer_track.visible = false
+	hint_label.visible = false
 	choice_grid.visible = false
 	word_label.text = "结束"
 	word_label.modulate = Color.WHITE
@@ -491,17 +507,22 @@ func _end_game() -> void:
 		_save_best()
 	_mark_session_completed()
 	var mode_tag := "简单" if easy_mode else "困难"
-	var parts: PackedStringArray = ["最佳连击 %d" % best_streak]
-	if cur_best > 0:
-		parts.append("%s历史最佳 %d" % [mode_tag, cur_best])
-	if is_best and score > 0:
-		parts.append("新纪录")
-	_set_hint(" · ".join(parts), Color("#ffd75d"))
-
-	if restart_button == null:
-		var vp := get_viewport_rect().size
-		var ry := clampf(choice_grid.position.y + 24.0, timer_track.position.y + 36.0, vp.y - 96.0)
-		restart_button = _make_restart_button(_restart, ry)
+	var acc := int(round(100.0 * float(correct_count) / float(maxi(total_trials, 1)))) if total_trials > 0 else 0
+	var rt_str := ("%.2f 秒" % (rt_sum / float(rt_count))) if rt_count > 0 else "—"
+	var lines := PackedStringArray([
+		"得分 %d　最佳连击 %d" % [score, best_streak],
+		"正确率 %d%%（%d/%d） · 平均反应 %s" % [acc, correct_count, total_trials, rt_str],
+		"%s历史最佳 %d" % [mode_tag, cur_best],
+	])
+	var heading := "本局结束 · 新纪录" if is_best and score > 0 else "本局结束"
+	restart_button = _show_summary_card(
+		heading,
+		lines,
+		"再来一局（%s）" % mode_tag,
+		_restart,
+		"切换难度",
+		_show_gate
+	)
 
 
 func _restart() -> void:

@@ -40,6 +40,11 @@ var trial_id := 0
 var stim: Dictionary = {}
 var choices: Array = []  # three cards; index = which pile
 var correct_pile := 0
+var correct_count := 0
+var total_trials := 0
+var switches_adapted := 0
+var rt_sum := 0.0
+var rt_count := 0
 
 var score_label: Label
 var round_label: Label
@@ -166,8 +171,7 @@ func _layout_board() -> void:
 		pile_btns[i].custom_minimum_size = Vector2(pile_w, pile_h)
 		pile_draws[i].position = Vector2(10, 10)
 		pile_draws[i].size = Vector2(pile_w - 20.0, pile_h - 20.0)
-	if restart_button != null:
-		restart_button.position = Vector2((vp.x - 220.0) / 2.0, y - 80.0)
+	_layout_summary_card()
 
 
 func _pick_new_rule(silent: bool) -> void:
@@ -244,12 +248,17 @@ func _on_pick(pile: int) -> void:
 	if phase != Phase.PLAY or waiting:
 		return
 	waiting = true
+	total_trials += 1
+	rt_sum += maxf(0.0, trial_limit - trial_left)
+	rt_count += 1
 	if pile == correct_pile:
+		correct_count += 1
 		streak += 1
 		since_switch += 1
 		var pts := 10 + mini(streak, 8) * 2
 		if since_switch == 1 and score > 0:
 			pts += 10  # first hit after a switch
+			switches_adapted += 1
 		score += pts
 		if streak > 0 and streak % 3 == 0:
 			trial_limit = maxf(TRIAL_TIME_MIN, trial_limit - TIME_STEP)
@@ -315,6 +324,7 @@ func _process(delta: float) -> void:
 	if trial_left <= 0.0:
 		trial_left = 0.0
 		waiting = true
+		total_trials += 1
 		_paint_timer()
 		streak = 0
 		_set_hint("超时", Color("#ff5d73"))
@@ -347,6 +357,9 @@ func _end_game() -> void:
 	phase = Phase.OVER
 	waiting = true
 	trial_id += 1
+	stim_panel.visible = false
+	timer_track.visible = false
+	hint_label.visible = false
 	for btn in pile_btns:
 		btn.visible = false
 	timer_bar.size.x = 0.0
@@ -356,30 +369,37 @@ func _end_game() -> void:
 		_save_best()
 	_mark_session_completed()
 	_update_hud()
-	var parts: PackedStringArray = ["时间到"]
-	if best_score > 0:
-		parts.append("历史最佳 %d" % best_score)
-	if is_best and score > 0:
-		parts.append("新纪录")
-	_set_hint(" · ".join(parts), Color("#ffd75d"))
-	if restart_button == null:
-		var vp := get_viewport_rect().size
-		restart_button = _make_restart_button(_restart, vp.y - 220.0)
+	var acc := int(round(100.0 * float(correct_count) / float(maxi(total_trials, 1)))) if total_trials > 0 else 0
+	var rt_str := ("%.2f 秒" % (rt_sum / float(rt_count))) if rt_count > 0 else "—"
+	var lines := PackedStringArray([
+		"得分 %d　成功切规则 %d 次" % [score, switches_adapted],
+		"正确率 %d%%（%d/%d） · 平均反应 %s" % [acc, correct_count, total_trials, rt_str],
+		"历史最佳 %d" % best_score,
+	])
+	var heading := "时间到 · 新纪录" if is_best and score > 0 else "时间到"
+	restart_button = _show_summary_card(heading, lines, "再来一局", _restart)
 
 
 func _restart() -> void:
 	trial_id += 1
 	score = 0
 	streak = 0
+	correct_count = 0
+	total_trials = 0
+	switches_adapted = 0
+	rt_sum = 0.0
+	rt_count = 0
 	trial_limit = TRIAL_TIME_START
 	round_left = ROUND_SECS
 	phase = Phase.PLAY
 	waiting = false
+	_hide_summary_card()
+	restart_button = null
+	stim_panel.visible = true
+	timer_track.visible = true
+	hint_label.visible = true
 	for btn in pile_btns:
 		btn.visible = true
-	if restart_button != null:
-		restart_button.queue_free()
-		restart_button = null
 	_pick_new_rule(true)
 	_new_trial()
 

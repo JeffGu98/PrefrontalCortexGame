@@ -219,12 +219,14 @@ func _launch_angle() -> float:
 	return float(quad) * PI * 0.5 + AXIS_DEAD + randf() * span
 
 
+static func move_duration_for(balls: int) -> float:
+	var balls_for_time := mini(balls, MAX_BALLS)
+	return clampf(MOVE_MIN + float(balls_for_time - START_BALLS) * 0.5, MOVE_MIN, MOVE_MAX)
+
+
 func _begin_move() -> void:
 	phase = Phase.MOVE
-	var balls_for_time := mini(ball_count, MAX_BALLS)
-	var base := clampf(MOVE_MIN + (balls_for_time - START_BALLS) * 0.5, MOVE_MIN, MOVE_MAX)
-	var factor := maxi(ceili((15.0 - float(balls_for_time)) / 2.0), 1)
-	phase_left = base * float(factor)  # 满 12 后不再加长移动
+	phase_left = move_duration_for(ball_count)  # 6 球 4.0s 起递增到 12 球 7.0s，满 12 后不再加长
 	_set_hint("盯住它们", Color("#7f8ba6"))
 	_update_hud()
 
@@ -255,6 +257,7 @@ func _on_canvas_click(local: Vector2) -> void:
 		picked.remove_at(at)
 	else:
 		picked.append(hit)
+	_play_sfx("tap")
 	canvas.queue_redraw()
 	_update_hud()
 

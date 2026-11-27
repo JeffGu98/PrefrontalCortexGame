@@ -4,16 +4,27 @@ extends Control
 
 const HUB_SCENE := "res://scenes/Hub.tscn"
 const BG_COLOR := Color("#0d1220")
+const SETTINGS_PATH := "user://settings.cfg"
 
 var title_text := ""
 var help_text := ""
 
 var _help_overlay: Control
 var _help_open := false
+var _mute_btn: Button
+var _sfx_player: AudioStreamPlayer
+var _sfx_cache: Dictionary = {}
 var _gate_panel: Panel
 var _gate_label: Label
 var _gate_continue_btn: Button
 var _gate_fresh_btn: Button
+var _summary_panel: Panel
+var _summary_title: Label
+var _summary_body: Label
+var _summary_primary_btn: Button
+var _summary_secondary_btn: Button
+var _summary_primary_cb: Callable
+var _summary_secondary_cb: Callable
 var _leaving := false
 
 
@@ -23,8 +34,10 @@ func _ready() -> void:
 	_build_back_button()
 	if title_text != "":
 		_build_title()
+	_build_mute_button()
 	_build_help_button()
 	_build_progress_gate()
+	_build_summary_card()
 	_build_game()
 	_build_help_overlay()
 	_bind_system_back()
@@ -58,7 +71,7 @@ func _build_title() -> void:
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	label.offset_left = 120
-	label.offset_right = -120
+	label.offset_right = -128
 	label.offset_top = 20
 	label.offset_bottom = 64
 	add_child(label)
@@ -118,6 +131,7 @@ func _layout_progress_gate() -> void:
 	_gate_continue_btn.size = Vector2(vp.x - 80.0, 72)
 	_gate_fresh_btn.position = Vector2(40, _gate_continue_btn.position.y + 88.0)
 	_gate_fresh_btn.size = Vector2(vp.x - 80.0, 64)
+	_layout_summary_card()
 
 
 func _show_progress_gate(body: String, continue_text: String, fresh_text: String) -> void:
@@ -144,6 +158,229 @@ func _on_progress_continue() -> void:
 
 func _on_progress_fresh() -> void:
 	pass
+
+
+## Shared end-of-round summary card with structured metrics and 1–2 action buttons.
+func _build_summary_card() -> void:
+	_summary_panel = Panel.new()
+	_summary_panel.z_index = 25
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#152034")
+	style.set_corner_radius_all(14)
+	_summary_panel.add_theme_stylebox_override("panel", style)
+	add_child(_summary_panel)
+
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 24
+	box.offset_right = -24
+	box.offset_top = 20
+	box.offset_bottom = -20
+	box.add_theme_constant_override("separation", 10)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_summary_panel.add_child(box)
+
+	_summary_title = _make_label("", 26, Color("#ffd75d"))
+	_summary_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_summary_title)
+
+	_summary_body = _make_label("", 20, Color("#e8edff"))
+	_summary_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_summary_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_summary_body)
+
+	_summary_primary_btn = Button.new()
+	_summary_primary_btn.z_index = 26
+	_summary_primary_btn.focus_mode = Control.FOCUS_NONE
+	_summary_primary_btn.add_theme_font_size_override("font_size", 24)
+	_summary_primary_btn.add_theme_color_override("font_color", Color("#0d1220"))
+	_style_button(_summary_primary_btn, Color("#4ade80"))
+	_summary_primary_btn.pressed.connect(_on_summary_primary)
+	add_child(_summary_primary_btn)
+
+	_summary_secondary_btn = Button.new()
+	_summary_secondary_btn.z_index = 26
+	_summary_secondary_btn.focus_mode = Control.FOCUS_NONE
+	_summary_secondary_btn.add_theme_font_size_override("font_size", 22)
+	_summary_secondary_btn.add_theme_color_override("font_color", Color("#e8edff"))
+	_style_button(_summary_secondary_btn, Color("#1a2740"))
+	_summary_secondary_btn.pressed.connect(_on_summary_secondary)
+	add_child(_summary_secondary_btn)
+
+	_hide_summary_card()
+	_layout_summary_card()
+
+
+func _layout_summary_card() -> void:
+	if _summary_panel == null:
+		return
+	var vp := get_viewport_rect().size
+	var w := minf(vp.x - 64.0, 560.0)
+	var x := (vp.x - w) / 2.0
+	var card_h := clampf(vp.y * 0.30, 210.0, 290.0)
+	var top := clampf((vp.y - (card_h + 152.0)) * 0.48, 176.0, 320.0)
+	_summary_panel.position = Vector2(x, top)
+	_summary_panel.size = Vector2(w, card_h)
+	_summary_primary_btn.position = Vector2(x, top + card_h + 16.0)
+	_summary_primary_btn.size = Vector2(w, 64.0)
+	_summary_secondary_btn.position = Vector2(x, _summary_primary_btn.position.y + 78.0)
+	_summary_secondary_btn.size = Vector2(w, 56.0)
+
+
+func _show_summary_card(
+	heading: String,
+	lines: PackedStringArray,
+	primary_text: String,
+	primary_cb: Callable,
+	secondary_text: String = "",
+	secondary_cb: Callable = Callable()
+) -> Button:
+	_layout_summary_card()
+	_summary_title.text = heading
+	_summary_body.text = "\n".join(lines)
+	_summary_primary_btn.text = primary_text
+	_summary_primary_cb = primary_cb
+	_summary_secondary_cb = secondary_cb
+	_summary_panel.visible = true
+	_summary_primary_btn.visible = true
+	if secondary_text != "" and secondary_cb.is_valid():
+		_summary_secondary_btn.text = secondary_text
+		_summary_secondary_btn.visible = true
+	else:
+		_summary_secondary_btn.visible = false
+	return _summary_primary_btn
+
+
+func _hide_summary_card() -> void:
+	if _summary_panel == null:
+		return
+	_summary_panel.visible = false
+	_summary_primary_btn.visible = false
+	_summary_secondary_btn.visible = false
+
+
+func _on_summary_primary() -> void:
+	_hide_summary_card()
+	if _summary_primary_cb.is_valid():
+		_summary_primary_cb.call()
+
+
+func _on_summary_secondary() -> void:
+	_hide_summary_card()
+	if _summary_secondary_cb.is_valid():
+		_summary_secondary_cb.call()
+
+
+static func is_muted() -> bool:
+	var config := ConfigFile.new()
+	if config.load(SETTINGS_PATH) != OK:
+		return false
+	return bool(config.get_value("audio", "muted", false))
+
+
+static func set_muted(val: bool) -> void:
+	var config := ConfigFile.new()
+	config.load(SETTINGS_PATH)
+	config.set_value("audio", "muted", val)
+	config.save(SETTINGS_PATH)
+
+
+func _build_mute_button() -> void:
+	_mute_btn = Button.new()
+	_mute_btn.focus_mode = Control.FOCUS_NONE
+	_mute_btn.process_mode = Node.PROCESS_MODE_ALWAYS
+	_mute_btn.z_index = 110
+	_mute_btn.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_mute_btn.offset_left = -120
+	_mute_btn.offset_top = 16
+	_mute_btn.offset_right = -72
+	_mute_btn.offset_bottom = 64
+	_mute_btn.add_theme_font_size_override("font_size", 18)
+	_mute_btn.pressed.connect(_toggle_mute)
+	add_child(_mute_btn)
+	_refresh_mute_button()
+
+
+func _toggle_mute() -> void:
+	var next := not is_muted()
+	set_muted(next)
+	_refresh_mute_button()
+	if not next:
+		_play_sfx("tap")
+
+
+func _refresh_mute_button() -> void:
+	if _mute_btn == null:
+		return
+	var muted := is_muted()
+	_mute_btn.text = "静" if muted else "声"
+	_mute_btn.add_theme_color_override("font_color", Color("#7f8ba6") if muted else Color("#e8edff"))
+	_style_button(_mute_btn, Color("#152034") if muted else Color("#1a2740"))
+
+
+func _play_sfx(kind: String) -> void:
+	if is_muted() or DisplayServer.get_name() == "headless":
+		return
+	var vib_ms := 0
+	match kind:
+		"ok":
+			vib_ms = 14
+		"bad":
+			vib_ms = 34
+		"win":
+			vib_ms = 24
+		_:
+			vib_ms = 8
+	if vib_ms > 0 and OS.has_feature("mobile"):
+		Input.vibrate_handheld(vib_ms)
+	if _sfx_player == null:
+		_sfx_player = AudioStreamPlayer.new()
+		_sfx_player.process_mode = Node.PROCESS_MODE_ALWAYS
+		add_child(_sfx_player)
+	if not _sfx_cache.has(kind):
+		_sfx_cache[kind] = _build_tone(kind)
+	_sfx_player.stream = _sfx_cache[kind]
+	_sfx_player.play()
+
+
+func _build_tone(kind: String) -> AudioStreamWAV:
+	var rate := 22050
+	var notes: Array = []
+	var amp := 0.16
+	match kind:
+		"ok":
+			notes = [[523.25, 0.045], [659.25, 0.065]]
+		"bad":
+			notes = [[196.0, 0.11]]
+			amp = 0.18
+		"win":
+			notes = [[523.25, 0.05], [659.25, 0.05], [783.99, 0.09]]
+		_:
+			notes = [[440.0, 0.035]]
+			amp = 0.11
+	var total_samples := 0
+	for n in notes:
+		total_samples += int(round(float(n[1]) * rate))
+	var pcm := PackedByteArray()
+	pcm.resize(total_samples * 2)
+	var offset := 0
+	for n in notes:
+		var freq: float = float(n[0])
+		var count := int(round(float(n[1]) * rate))
+		for i in range(count):
+			var t := float(i) / float(rate)
+			var u := float(i) / float(maxi(count - 1, 1))
+			var env := minf(u * 10.0, 1.0) * (1.0 - u)
+			var sample := sin(TAU * freq * t) * amp * env
+			var s16 := clampi(int(round(sample * 32767.0)), -32768, 32767)
+			pcm.encode_s16((offset + i) * 2, s16)
+		offset += count
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = rate
+	wav.stereo = false
+	wav.data = pcm
+	return wav
 
 
 func _build_help_button() -> void:
@@ -354,6 +591,14 @@ func _make_restart_button(callback: Callable, y: float = -1.0) -> Button:
 
 
 func _burst_feedback(text: String, color: Color = Color("#4ade80")) -> void:
+	if color == Color("#4ade80"):
+		_play_sfx("ok")
+	elif color == Color("#ff5d73"):
+		_play_sfx("bad")
+	elif color == Color("#ffd75d"):
+		_play_sfx("win")
+	else:
+		_play_sfx("tap")
 	var old := get_node_or_null("BurstFeedback")
 	if old != null:
 		old.queue_free()

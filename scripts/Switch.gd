@@ -31,6 +31,14 @@ var current_trial_time := TRIAL_TIME_START
 var trial_time_left := TRIAL_TIME_START
 var waiting := false
 var trial_id := 0
+var correct_count := 0
+var total_trials := 0
+var switch_correct := 0
+var switch_total := 0
+var repeat_rt_sum := 0.0
+var repeat_rt_count := 0
+var switch_rt_sum := 0.0
+var switch_rt_count := 0
 
 var score_label: Label
 var lives_label: Label
@@ -191,21 +199,29 @@ func _layout_board() -> void:
 	if brief_panel != null:
 		brief_panel.position = Vector2(40, 250)
 		brief_panel.size = Vector2(vp.x - 80.0, 260)
+	_layout_summary_card()
 
 
 func _start_round() -> void:
 	score = 0
 	lives = LIVES
 	streak = 0
+	correct_count = 0
+	total_trials = 0
+	switch_correct = 0
+	switch_total = 0
+	repeat_rt_sum = 0.0
+	repeat_rt_count = 0
+	switch_rt_sum = 0.0
+	switch_rt_count = 0
 	rule = ODD_EVEN if randf() < 0.5 else HIGH_LOW
 	stay_left = randi_range(1, 3)
 	is_switch = false
 	waiting = false
 	phase = Phase.READY
 	phase_left = 0.0
-	if restart_button != null:
-		restart_button.queue_free()
-		restart_button = null
+	_hide_summary_card()
+	restart_button = null
 	var ready := "先看清蓝/橙规则"
 	if best_score > 0:
 		ready += " · 最佳 %d" % best_score
@@ -274,10 +290,22 @@ func _correct_side() -> int:
 func _on_answer(side: int) -> void:
 	if phase != Phase.PLAY or waiting:
 		return
+	var rt := maxf(0.0, current_trial_time - trial_time_left)
+	total_trials += 1
+	if is_switch:
+		switch_total += 1
 	if side == _correct_side():
 		var pts := SCORE_SWITCH if is_switch else SCORE_REPEAT
 		streak += 1
 		score += pts
+		correct_count += 1
+		if is_switch:
+			switch_correct += 1
+			switch_rt_sum += rt
+			switch_rt_count += 1
+		else:
+			repeat_rt_sum += rt
+			repeat_rt_count += 1
 		_set_hint("+%d%s" % [pts, " · 切对了" if is_switch else ""], Color("#4ade80"))
 		_burst_feedback("+%d" % pts, Color("#4ade80"))
 		number_label.modulate = Color("#4ade80")
@@ -323,6 +351,9 @@ func _process(delta: float) -> void:
 	timer_bar.size.x = timer_track.size.x * ratio
 	timer_bar.color = Color("#ff5d73") if ratio < 0.25 else Color("#8ab4ff")
 	if trial_time_left <= 0.0:
+		total_trials += 1
+		if is_switch:
+			switch_total += 1
 		_miss("超时")
 
 
@@ -353,16 +384,23 @@ func _update_hud() -> void:
 		lives_label.text = "生命 %d/%d · 距切换 %d 题" % [lives, LIVES, maxi(stay_left, 1)]
 	var play := phase == Phase.PLAY and not waiting
 	var ready := phase == Phase.READY
+	var over := phase == Phase.OVER
 	if left_btn != null:
-		left_btn.visible = not ready
-		right_btn.visible = not ready
+		left_btn.visible = not ready and not over
+		right_btn.visible = not ready and not over
 		start_btn.visible = ready
 		left_btn.modulate = Color.WHITE if play else Color(1, 1, 1, 0.45)
 		right_btn.modulate = Color.WHITE if play else Color(1, 1, 1, 0.45)
+	if rule_chip != null:
+		rule_chip.visible = not over
+	if number_label != null:
+		number_label.visible = not over
+	if hint_label != null:
+		hint_label.visible = not over
 	if brief_panel != null:
 		brief_panel.visible = ready
 	if timer_track != null:
-		timer_track.visible = not ready and phase != Phase.OVER
+		timer_track.visible = not ready and not over
 
 
 func _set_hint(text: String, color: Color) -> void:
@@ -381,13 +419,24 @@ func _end_game() -> void:
 		best_score = score
 		_save_best()
 	_mark_session_completed()
-	var suffix := " · 新纪录！" if is_best else ""
-	if best_score > 0 and not is_best:
-		suffix = " · 最佳 %d" % best_score
-	_set_hint("结束 · 得分 %d%s" % [score, suffix], Color("#ffd75d"))
 	_update_hud()
-	if restart_button == null:
-		restart_button = _make_restart_button(_restart, left_btn.position.y - 84.0)
+	var acc := int(round(100.0 * float(correct_count) / float(maxi(total_trials, 1)))) if total_trials > 0 else 0
+	var sw_acc := (
+		"%d%%（%d/%d）" % [int(round(100.0 * float(switch_correct) / float(switch_total))), switch_correct, switch_total]
+	) if switch_total > 0 else "—"
+	var lines := PackedStringArray([
+		"得分 %d　历史最佳 %d" % [score, best_score],
+		"总正确率 %d%% · 切换正确率 %s" % [acc, sw_acc],
+	])
+	if repeat_rt_count > 0 and switch_rt_count > 0:
+		var cost_ms := int(round(((switch_rt_sum / float(switch_rt_count)) - (repeat_rt_sum / float(repeat_rt_count))) * 1000.0))
+		var sign_str := "+" if cost_ms >= 0 else ""
+		lines.append("切换耗时 %s%d ms" % [sign_str, cost_ms])
+	elif repeat_rt_count + switch_rt_count > 0:
+		var avg_rt := (repeat_rt_sum + switch_rt_sum) / float(repeat_rt_count + switch_rt_count)
+		lines.append("平均反应 %.2f 秒" % avg_rt)
+	var heading := "本局结束 · 新纪录" if is_best and score > 0 else "本局结束"
+	restart_button = _show_summary_card(heading, lines, "再来一局", _restart)
 
 
 func _restart() -> void:

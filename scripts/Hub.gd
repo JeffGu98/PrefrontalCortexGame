@@ -13,6 +13,7 @@ var _release_url := RELEASES_PAGE
 var open_intercept: Callable
 var _quit_armed := false
 var _quit_hint: Label
+var _mute_btn: Button
 
 
 const GAMES := [
@@ -72,6 +73,36 @@ func _build_header() -> void:
 	sub.offset_top = 102
 	sub.offset_bottom = 132
 	add_child(sub)
+
+	_mute_btn = Button.new()
+	_mute_btn.focus_mode = Control.FOCUS_NONE
+	_mute_btn.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_mute_btn.offset_left = -84
+	_mute_btn.offset_top = 48
+	_mute_btn.offset_right = -24
+	_mute_btn.offset_bottom = 92
+	_mute_btn.add_theme_font_size_override("font_size", 16)
+	_mute_btn.pressed.connect(_toggle_mute)
+	add_child(_mute_btn)
+	_refresh_mute_button()
+
+
+func _toggle_mute() -> void:
+	var base := load("res://scripts/GameBase.gd")
+	if base == null:
+		return
+	base.set_muted(not base.is_muted())
+	_refresh_mute_button()
+
+
+func _refresh_mute_button() -> void:
+	if _mute_btn == null:
+		return
+	var base := load("res://scripts/GameBase.gd")
+	var muted: bool = base != null and base.is_muted()
+	_mute_btn.text = "静音" if muted else "音效"
+	_mute_btn.add_theme_color_override("font_color", Color("#7f8ba6") if muted else Color("#e8edff"))
+	_style_button(_mute_btn, Color("#152034") if muted else Color("#1a2740"))
 
 
 func _build_list() -> void:
@@ -323,10 +354,115 @@ func _make_game_button(game: Dictionary) -> HubCard:
 		tag.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		row.add_child(tag)
+	else:
+		var stat := game_stat_text(str(game["title"]))
+		if not stat.is_empty():
+			var stat_label := Label.new()
+			stat_label.text = stat
+			stat_label.add_theme_font_size_override("font_size", 14)
+			stat_label.add_theme_color_override("font_color", Color("#7f8ba6"))
+			stat_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			stat_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			stat_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			row.add_child(stat_label)
 
 	if built:
 		btn.activated.connect(_open_game.bind(game["scene"]))
 	return btn
+
+
+static func game_stat_text(title: String) -> String:
+	var cfg := ConfigFile.new()
+	match title:
+		"反向色字":
+			if cfg.load("user://stroop_best.cfg") != OK:
+				return ""
+			var legacy := int(cfg.get_value("best", "score", 0))
+			var easy := int(cfg.get_value("best", "easy_score", legacy))
+			var hard := int(cfg.get_value("best", "hard_score", 0))
+			if easy > 0 and hard > 0:
+				return "简 %d · 难 %d" % [easy, hard]
+			if easy > 0:
+				return "简单 %d" % easy
+			if hard > 0:
+				return "困难 %d" % hard
+			return ""
+		"舒尔特方格":
+			if cfg.load("user://schulte_best.cfg") != OK:
+				return ""
+			var sz := clampi(int(cfg.get_value("best", "size", 5)), 5, 7)
+			var t := float(cfg.get_value("best", "time_%d" % sz, -1.0))
+			if t < 0.0 and sz == 5:
+				t = float(cfg.get_value("best", "time", -1.0))
+			if t > 0.0:
+				return "%d×%d · %.1fs" % [sz, sz, t]
+			return "已到 %d×%d" % [sz, sz] if sz > 5 else ""
+		"追踪异色球":
+			if cfg.load("user://track_best.cfg") != OK:
+				return ""
+			var balls := clampi(int(cfg.get_value("best", "balls", 6)), 6, 12)
+			var sc := int(cfg.get_value("best", "score", 0))
+			if balls > 6 and sc > 0:
+				return "%d 球 · 最佳 %d" % [balls, sc]
+			if balls > 6:
+				return "已到 %d 球" % balls
+			return "最佳 %d" % sc if sc > 0 else ""
+		"N-Back":
+			if cfg.load("user://nback_best.cfg") != OK:
+				return ""
+			var sc := int(cfg.get_value("best", "score", 0))
+			return "最佳 %d" % sc if sc > 0 else ""
+		"积木跨度":
+			if cfg.load("user://corsi_best.cfg") != OK:
+				return ""
+			var span := int(cfg.get_value("best", "span", 3))
+			var sc := int(cfg.get_value("best", "score", 0))
+			if span > 3 and sc > 0:
+				return "跨度 %d · 最佳 %d" % [span, sc]
+			return "最佳 %d" % sc if sc > 0 else ""
+		"各点一次":
+			if cfg.load("user://selforder_best.cfg") != OK:
+				return ""
+			var best_set := int(cfg.get_value("best", "set", 4))
+			var sc := int(cfg.get_value("best", "score", 0))
+			if best_set > 4 and sc > 0:
+				return "最多 %d · 最佳 %d" % [best_set, sc]
+			return "最佳 %d" % sc if sc > 0 else ""
+		"末项记":
+			if cfg.load("user://running_span_best.cfg") != OK:
+				return ""
+			var span := int(cfg.get_value("best", "span", 2))
+			var sc := int(cfg.get_value("best", "score", 0))
+			if span > 2 and sc > 0:
+				return "末项 %d · 最佳 %d" % [span, sc]
+			return "最佳 %d" % sc if sc > 0 else ""
+		"看点数":
+			if cfg.load("user://dots_best.cfg") != OK:
+				return ""
+			var sc := int(cfg.get_value("best", "score", 0))
+			return "最佳 %d" % sc if sc > 0 else ""
+		"任务切换":
+			if cfg.load("user://switch_best.cfg") != OK:
+				return ""
+			var sc := int(cfg.get_value("best", "score", 0))
+			return "最佳 %d" % sc if sc > 0 else ""
+		"规则变了":
+			if cfg.load("user://ruleshift_best.cfg") != OK:
+				return ""
+			var sc := int(cfg.get_value("best", "score", 0))
+			return "最佳 %d" % sc if sc > 0 else ""
+		"汉诺塔":
+			if cfg.load("user://hanoi_best.cfg") != OK:
+				return ""
+			var disks := clampi(int(cfg.get_value("best", "disks", 3)), 3, 6)
+			var sc := int(cfg.get_value("best", "score", 0))
+			if disks > 3 and sc > 0:
+				return "%d 盘 · 最佳 %d" % [disks, sc]
+			if disks > 3:
+				return "已到 %d 盘" % disks
+			return "最佳 %d" % sc if sc > 0 else ""
+		_:
+			return ""
 
 
 func _style_button(btn: Button, bg: Color) -> void:
