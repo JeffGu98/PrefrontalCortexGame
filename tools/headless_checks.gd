@@ -26,14 +26,14 @@ func _run_all() -> void:
 func _check_versions() -> int:
 	var failed := 0
 	var project := str(ProjectSettings.get_setting("application/config/version", ""))
-	if project != "1.8.1":
+	if project != "1.8.2":
 		print("FAIL version project=%s" % project)
 		failed += 1
 	var presets := FileAccess.get_file_as_string("res://export_presets.cfg")
-	if presets.find('version/name="1.8.1"') < 0 or presets.find("version/code=181") < 0:
+	if presets.find('version/name="1.8.2"') < 0 or presets.find("version/code=182") < 0:
 		print("FAIL export_presets version")
 		failed += 1
-	if presets.find('export_path="build/PrefrontalCortexGame-1.8.1.apk"') < 0:
+	if presets.find('export_path="build/PrefrontalCortexGame-1.8.2.apk"') < 0:
 		print("FAIL export_path")
 		failed += 1
 	if presets.find('include_filter="assets/schulte/*"') >= 0:
@@ -275,6 +275,11 @@ func _check_hub_scroll_vs_tap() -> int:
 		hub.queue_free()
 		return 1
 	var failed := 0
+	var ver_label := hub.get_node_or_null("VersionLabel") as Label
+	var expected_ver := "v%s" % str(ProjectSettings.get_setting("application/config/version", "")).strip_edges()
+	if ver_label == null or ver_label.text != expected_ver:
+		print("FAIL hub VersionLabel got=%s want=%s" % [ver_label.text if ver_label else "<missing>", expected_ver])
+		failed += 1
 	# v1.7.0 system back: first press arms, does not quit the tree.
 	if bool(hub._quit_armed):
 		print("FAIL quit already armed")

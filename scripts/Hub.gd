@@ -86,6 +86,22 @@ func _build_header() -> void:
 	add_child(_mute_btn)
 	_refresh_mute_button()
 
+	var version := str(ProjectSettings.get_setting("application/config/version", "")).strip_edges()
+	if not version.is_empty():
+		var ver_label := Label.new()
+		ver_label.name = "VersionLabel"
+		ver_label.text = version if version.begins_with("v") or version.begins_with("V") else "v%s" % version
+		ver_label.add_theme_font_size_override("font_size", 16)
+		ver_label.add_theme_color_override("font_color", Color("#7f8ba6"))
+		ver_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		ver_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ver_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+		ver_label.offset_left = 24
+		ver_label.offset_top = 48
+		ver_label.offset_right = 160
+		ver_label.offset_bottom = 92
+		add_child(ver_label)
+
 
 func _toggle_mute() -> void:
 	var base := load("res://scripts/GameBase.gd")
